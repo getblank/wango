@@ -14,12 +14,12 @@ var url = "ws://localhost:1234"
 
 func TestAcceptingConcurrentConnections(t *testing.T) {
 	path := "/wamp1"
-	server := httpServer(path)
-	numberConnections := 100
+	server := createWampServer(path)
+	numberConnections := 10
 	for i := 0; i < numberConnections; i++ {
-		go clientConnect(path)
+		go connectForOneSecond(path)
 	}
-	time.Sleep(time.Millisecond * 200)
+	time.Sleep(time.Millisecond * 10)
 
 	totalConnections := len(server.connections)
 	if totalConnections != numberConnections {
@@ -29,10 +29,10 @@ func TestAcceptingConcurrentConnections(t *testing.T) {
 
 func TestClosingConcurrentConnections(t *testing.T) {
 	path := "/wamp2"
-	server := httpServer(path)
-	numberConnections := 100
+	server := createWampServer(path)
+	numberConnections := 10
 	for i := 0; i < numberConnections; i++ {
-		go clientConnect(path)
+		go connectForOneSecond(path)
 	}
 
 	time.Sleep(time.Second * 2)
@@ -43,30 +43,16 @@ func TestClosingConcurrentConnections(t *testing.T) {
 	}
 }
 
-func clientConnect(path string) {
+func connectForOneSecond(path string) {
 	ws, err := websocket.Dial(url+path, "", origin)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	message := []byte("ping")
-	_, err = ws.Write(message)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var msg = make([]byte, 512)
-	_, err = ws.Read(msg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// fmt.Printf("Receive: %s\n", msg)
 	time.Sleep(time.Second * 1)
 	ws.Close()
-	// fmt.Printf("Closed")
 }
 
-func httpServer(path string) *WS {
+func createWampServer(path string) *WS {
 	wampServer := New()
 	http.Handle(path, websocket.Handler(func(ws *websocket.Conn) {
 		wampServer.WampHandler(ws, nil)

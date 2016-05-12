@@ -26,11 +26,14 @@ func New() *WS {
 }
 
 func (ws *WS) WampHandler(connection *websocket.Conn, extra interface{}) {
-	ws.addConnection(connection, extra)
+	id := ws.addConnection(connection, extra)
 	var data interface{}
-	websocket.Message.Receive(connection, &data)
-
-	websocket.Message.Send(connection, "pong")
+	for {
+		err := websocket.Message.Receive(connection, &data)
+		if err != nil {
+			ws.deleteConnection(id)
+		}
+	}
 }
 
 type conn struct {
