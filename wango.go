@@ -1,18 +1,87 @@
 package wango
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
+	"regexp"
 	"sync"
+	"time"
 
+	"github.com/ivahaev/go-logger"
+
+	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
+
+const (
+	msgWelcome = iota
+	msgPrefix
+	msgCall
+	msgCallResult
+	msgCallError
+	msgSubscribe
+	msgUnsubscribe
+	msgPublish
+	msgEvent
+	msgSubscribed
+	msgSubscribeError
+	msgHeartbeat = 20
+)
+
+const (
+	hbLimit            = 5
+	hbTimeout          = time.Second * 5
+	sendChanBufferSize = 50
+	identity           = "wango"
+)
+
+var (
+	msgIntTypes = map[int]string{
+		0:  "WELCOME",
+		1:  "PREFIX",
+		2:  "CALL",
+		3:  "CALLRESULT",
+		4:  "CALLERROR",
+		5:  "SUBSCRIBE",
+		6:  "UNSUBSCRIBE",
+		7:  "PUBLISH",
+		8:  "EVENT",
+		9:  "SUBSCRIBED",
+		10: "SUBSCRIBEERROR",
+		20: "HB",
+	}
+	msgTxtTypes = map[string]int{
+		"WELCOME":        0,
+		"PREFIX":         1,
+		"CALL":           2,
+		"CALLRESULT":     3,
+		"CALLERROR":      4,
+		"SUBSCRIBE":      5,
+		"UNSUBSCRIBE":    6,
+		"PUBLISH":        7,
+		"EVENT":          8,
+		"SUBSCRIBED":     9,
+		"SUBSCRIBEERROR": 10,
+		"HB":             20,
+	}
+
+	ErrHandlerAlreadyRegistered = errors.New("Handler already registered")
+	ErrRPCNotRegistered         = errors.New("RPC not registered")
+)
+
+type callMsg struct {
+	CallID string
+	URI    string
+	Args   []interface{}
+}
 
 type WS struct {
 	connections       map[string]*conn
 	connectionsLocker sync.RWMutex
-	// rpcHandlers       map[regexp]rpcHandler
+	rpcHandlers       map[string]RPCHandler
+	rpcRgxHandlers    map[*regexp.Regexp]RPCHandler
 	// subHandlers       map[regexp]subHandler
 	// subscribers       subscr
 	openCB  func()
@@ -20,61 +89,199 @@ type WS struct {
 }
 
 func New() *WS {
-	ws := new(WS)
-	ws.connections = map[string]*conn{}
-	return ws
+	server := new(WS)
+	server.connections = map[string]*conn{}
+	server.rpcHandlers = map[string]RPCHandler{}
+	server.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
+	return server
 }
 
-func (ws *WS) WampHandler(connection *websocket.Conn, extra interface{}) {
-	id := ws.addConnection(connection, extra)
-	var data interface{}
+func (server *WS) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
+	switch _uri.(type) {
+	case string:
+		uri := _uri.(string)
+		if _, ok := server.rpcHandlers[uri]; ok {
+			return ErrHandlerAlreadyRegistered
+		}
+		server.rpcHandlers[uri] = fn
+	case *regexp.Regexp:
+		rgx := _uri.(*regexp.Regexp)
+		if _, ok := server.rpcRgxHandlers[rgx]; ok {
+			return ErrHandlerAlreadyRegistered
+		}
+		server.rpcRgxHandlers[rgx] = fn
+	}
+
+	return nil
+}
+
+func (server *WS) WampHandler(ws *websocket.Conn, extra interface{}) {
+	c := server.addConnection(ws, extra)
+	defer server.deleteConnection(c.id)
+
+	go c.sender()
+
+	server.receive(c)
+}
+
+func (server *WS) receive(c *conn) {
+	var data string
 	for {
-		err := websocket.Message.Receive(connection, &data)
+		err := websocket.Message.Receive(c.connection, &data)
 		if err != nil {
-			ws.deleteConnection(id)
+			if err != io.EOF {
+				// Error receiving message
+			}
+			break
+		}
+		msgType, msg, err := parseMessage(data)
+		if err != nil {
+			// error parsing!!!
+			logger.Error(err)
+			continue
+		}
+		switch msgType {
+		case msgCall:
+			server.handleRPCCall(c, msg)
+		case msgSubscribe:
+		case msgUnsubscribe:
+		case msgHeartbeat:
 		}
 	}
+}
+
+func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
+	rpcMessage, err := parseCallMessage(msg)
+	if err != nil {
+		logger.Error("Can't parse rpc message", err.Error())
+		return
+	}
+	uri := rpcMessage.URI
+	handler, ok := server.rpcHandlers[uri]
+	if ok {
+		res, err := handler(c.id, uri, rpcMessage.Args...)
+		if err != nil {
+			response, _ := createMessage(msgCallError, rpcMessage.CallID, err)
+			// TODO: error handling
+			c.send(response)
+			return
+		}
+		response, _ := createMessage(msgCallResult, rpcMessage.CallID, res)
+		c.send(response)
+		return
+	}
+	for rgx, handler := range server.rpcRgxHandlers {
+		if rgx.MatchString(uri) {
+			res, err := handler(c.id, uri, rpcMessage.Args...)
+			if err != nil {
+				response, _ := createMessage(msgCallError, rpcMessage.CallID, err)
+				c.send(response)
+				return
+			}
+			response, _ := createMessage(msgCallResult, rpcMessage.CallID, res)
+			c.send(response)
+			return
+		}
+	}
+	response, _ := createMessage(msgCallError, rpcMessage.CallID, ErrRPCNotRegistered)
+	c.send(response)
+}
+
+func (c *conn) send(msg interface{}) {
+	c.sendChan <- msg
+}
+
+func (c *conn) sender() {
+	for msg := range c.sendChan {
+		websocket.Message.Send(c.connection, msg)
+	}
+}
+
+func (server *WS) addConnection(ws *websocket.Conn, extra interface{}) *conn {
+	cn := new(conn)
+	cn.connection = ws
+	cn.id = newUUIDv4()
+	cn.extra = extra
+	cn.sendChan = make(chan interface{}, sendChanBufferSize)
+	server.connectionsLocker.Lock()
+	defer server.connectionsLocker.Unlock()
+	server.connections[cn.id] = cn
+
+	return cn
+}
+
+func (server *WS) getConnection(id string) (*conn, error) {
+	server.connectionsLocker.RLock()
+	defer server.connectionsLocker.RUnlock()
+	cn, ok := server.connections[id]
+	if !ok {
+		return nil, errors.New("NOT FOUND")
+	}
+
+	return cn, nil
+}
+
+func (server *WS) deleteConnection(id string) {
+	server.connectionsLocker.Lock()
+	defer server.connectionsLocker.Unlock()
+	delete(server.connections, id)
 }
 
 type conn struct {
 	id         string
 	connection *websocket.Conn
 	extra      interface{}
+	sendChan   chan interface{}
 }
 
-func (c *WS) addConnection(connection *websocket.Conn, extra interface{}) string {
-	cn := new(conn)
-	cn.connection = connection
-	cn.id = newUUIDv4()
-	cn.extra = extra
-	c.connectionsLocker.Lock()
-	defer c.connectionsLocker.Unlock()
-	c.connections[cn.id] = cn
-	return cn.id
-}
+type RPCHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
 
-func (c *WS) deleteConnection(id string) {
-	c.connectionsLocker.Lock()
-	defer c.connectionsLocker.Unlock()
-	delete(c.connections, id)
-}
-
-func (c *WS) getConnection(id string) (*conn, error) {
-	c.connectionsLocker.RLock()
-	defer c.connectionsLocker.RUnlock()
-	cn, ok := c.connections[id]
-	if !ok {
-		return nil, errors.New("NOT FOUND")
+func parseMessage(_msg string) (int, []interface{}, error) {
+	var msg []interface{}
+	err := json.Unmarshal([]byte(_msg), &msg)
+	if err != nil {
+		return 0, nil, errors.Wrap(err, "when unmarshaling wamp message")
 	}
-	return cn, nil
+	if len(msg) < 1 {
+		return 0, nil, errors.New("invalid wamp message")
+	}
+	if numCallType, ok := msg[0].(float64); ok {
+		return int(numCallType), msg, nil
+	}
+	if strCallType, ok := msg[0].(string); ok {
+		callType, ok := msgTxtTypes[strCallType]
+		if !ok {
+			return 0, nil, errors.Errorf("unknown call type: %s", strCallType)
+		}
+		return callType, msg, nil
+	}
+	return 0, nil, errors.New("unknown call type")
+}
+
+func parseCallMessage(msg []interface{}) (*callMsg, error) {
+	if len(msg) < 3 {
+		return nil, errors.New("invalid wamp message")
+	}
+	callID, ok := msg[1].(string)
+	if !ok {
+		return nil, errors.New("invalid wamp message. callID is not a string")
+	}
+	uri, ok := msg[2].(string)
+	if !ok {
+		return nil, errors.New("invalid wamp message. uri is not a string")
+	}
+	message := new(callMsg)
+	message.CallID = callID
+	message.URI = uri
+	if len(msg) > 3 {
+		message.Args = msg[2:]
+	}
+	return message, nil
 }
 
 func newUUIDv4() string {
 	u := [16]byte{}
-	_, err := rand.Read(u[:16])
-	if err != nil {
-		panic(err)
-	}
+	rand.Read(u[:16])
 
 	u[8] = (u[8] | 0x80) & 0xBf
 	u[6] = (u[6] | 0x40) & 0x4f
