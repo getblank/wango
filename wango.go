@@ -1,0 +1,5 @@
+package wango
+
+func init() {
+
+}
