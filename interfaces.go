@@ -7,7 +7,7 @@ import (
 type connector interface{}
 
 type connKeeper interface {
-	add(conn *websocket.Conn)
+	add(conn *websocket.Conn, extra interface{}) string
 	del(connID string)
-	get(connID string)
+	get(connID string) (*conn, error)
 }

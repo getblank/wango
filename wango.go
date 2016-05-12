@@ -12,11 +12,25 @@ import (
 type WS struct {
 	connections       map[string]*conn
 	connectionsLocker sync.RWMutex
-	rpcHandlers       map[regexp]rpcHandler
-	subHandlers       map[regexp]subHandler
-	subscribers       subscr
-	openCB            func()
-	closeCB           func()
+	// rpcHandlers       map[regexp]rpcHandler
+	// subHandlers       map[regexp]subHandler
+	// subscribers       subscr
+	openCB  func()
+	closeCB func()
+}
+
+func New() *WS {
+	ws := new(WS)
+	ws.connections = map[string]*conn{}
+	return ws
+}
+
+func (ws *WS) WampHandler(connection *websocket.Conn, extra interface{}) {
+	ws.addConnection(connection, extra)
+	var data interface{}
+	websocket.Message.Receive(connection, &data)
+
+	websocket.Message.Send(connection, "pong")
 }
 
 type conn struct {
@@ -25,7 +39,7 @@ type conn struct {
 	extra      interface{}
 }
 
-func (c *WS) add(connection *websocket.Conn, extra interface{}) string {
+func (c *WS) addConnection(connection *websocket.Conn, extra interface{}) string {
 	cn := new(conn)
 	cn.connection = connection
 	cn.id = newUUIDv4()
@@ -36,13 +50,13 @@ func (c *WS) add(connection *websocket.Conn, extra interface{}) string {
 	return cn.id
 }
 
-func (c *WS) del(id string) {
+func (c *WS) deleteConnection(id string) {
 	c.connectionsLocker.Lock()
 	defer c.connectionsLocker.Unlock()
 	delete(c.connections, id)
 }
 
-func (c *WS) get(id string) (*conn, error) {
+func (c *WS) getConnection(id string) (*conn, error) {
 	c.connectionsLocker.RLock()
 	defer c.connectionsLocker.RUnlock()
 	cn, ok := c.connections[id]
