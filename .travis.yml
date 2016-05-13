@@ -5,3 +5,4 @@ go:
 
 install:
   - go get golang.org/x/net/websocket
+  - go get github.com/pkg/errors
