@@ -117,23 +117,13 @@ func TestSubHandling(t *testing.T) {
 		t.Fatal("subHandler not registered")
 	}
 
-	_, err = connectAndSub(path, uri+".test", nil)
-	if err != nil {
-		t.Fatal("Subscribe failed", err)
-	}
+	connectAndSub(t, path, uri+".test", nil)
 
 	if len(server.subscribers) == 0 {
 		t.Fatal("subHandler not registered")
 	}
 
-	_, err = connectAndSub(path, uri+".error", nil)
-	if err == nil {
-		t.Fatal("Subscribe must failed")
-	}
-
-	if len(server.subscribers) > 1 {
-		t.Fatal("subscriber must not be registered")
-	}
+	connectAndSub(t, path, uri+".error", true)
 
 	uri = uri + ".wait"
 	eventToSend := "test-event"
@@ -148,7 +138,7 @@ func TestSubHandling(t *testing.T) {
 		time.Sleep(time.Millisecond * 200)
 		server.Publish(uri, eventToSend)
 	}()
-	res, err := connectAndWaitForEvent(path, uri, nil)
+	res, err := connectAndWaitForEvent(t, path, uri, nil)
 	if err != nil {
 		t.Fatal("Can't wait for event")
 	}
@@ -218,59 +208,53 @@ func connectAndRPC(path, uri string, args ...interface{}) (interface{}, error) {
 	}
 }
 
-func connectAndSub(path, uri string, args ...interface{}) (interface{}, error) {
+func connectAndSub(t *testing.T, path, uri string, args ...interface{}) {
 	ws, err := websocket.Dial(url+path, "", origin)
-	defer ws.Close()
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
-	msgId := newUUIDv4()
-	message, err := createMessage(msgSubscribe, msgId, uri)
+	defer ws.Close()
+	message, err := createMessage(msgSubscribe, uri)
 	websocket.Message.Send(ws, message)
 	ch := make(chan string)
-	errChan := make(chan error)
 
 	go func() {
 		var msg string
 		err := websocket.Message.Receive(ws, &msg)
 		if err != nil {
-			errChan <- err
-			return
+			t.Fatal("Message receive failed", err)
 		}
 		ch <- msg
 	}()
 
 	timer := time.NewTimer(time.Second)
 	select {
-	case err := <-errChan:
-		return nil, err
 	case msg := <-ch:
 		var message []interface{}
 		err = json.Unmarshal([]byte(msg), &message)
 		if err != nil {
-			panic("Can't unmarshal message")
+			t.Fatal("Can't unmarshal message")
 		}
-		if message[0].(float64) == msgSubscribed && message[1].(string) == msgId {
-			return nil, nil
-		}
-		if message[0].(float64) == msgSubscribeError && message[1].(string) == msgId {
-			return nil, errors.New(message[2].(string))
+		if message[1].(string) == uri {
+			if message[0].(float64) == msgSubscribed {
+				return
+			}
+			if message[0].(float64) == msgSubscribeError {
+				t.Fatal(message[2])
+			}
 		}
 	case <-timer.C:
-		return nil, errors.New("Time is gone")
+		t.Fatal("Time is gone")
 	}
-
-	return nil, nil
 }
 
-func connectAndWaitForEvent(path, uri string, args ...interface{}) (interface{}, error) {
+func connectAndWaitForEvent(t *testing.T, path, uri string, args ...interface{}) (interface{}, error) {
 	ws, err := websocket.Dial(url+path, "", origin)
 	defer ws.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
-	msgId := newUUIDv4()
-	message, err := createMessage(msgSubscribe, msgId, uri)
+	message, err := createMessage(msgSubscribe, uri)
 	websocket.Message.Send(ws, message)
 	ch := make(chan string)
 	errChan := make(chan error)
@@ -298,11 +282,13 @@ func connectAndWaitForEvent(path, uri string, args ...interface{}) (interface{},
 			if err != nil {
 				panic("Can't unmarshal message")
 			}
-			if message[0].(float64) == msgSubscribeError && message[1].(string) == msgId {
-				return nil, errors.New(message[2].(string))
-			}
-			if message[0].(float64) == msgEvent && message[1].(string) == uri {
-				return message[2], nil
+			if message[1].(string) == uri {
+				if message[0].(float64) == msgEvent {
+					return message[2], nil
+				}
+				if message[0].(float64) == msgSubscribeError {
+					t.Fatal(message[2])
+				}
 			}
 		case <-timer.C:
 			return nil, errors.New("Time is gone")

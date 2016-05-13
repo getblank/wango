@@ -166,7 +166,6 @@ func (server *WS) Publish(uri string, event interface{}) {
 		i++
 	}
 	server.subscribersLocker.RUnlock()
-
 	for _, id := range subscriberIds {
 		c, err := server.getConnection(id)
 		if err != nil {
@@ -232,7 +231,7 @@ func (server *WS) receive(c *conn) {
 }
 
 func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msg)
+	rpcMessage, err := parseCallMessage(msgCall, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
@@ -268,7 +267,7 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 }
 
 func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msg)
+	rpcMessage, err := parseCallMessage(msgSubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
@@ -298,7 +297,7 @@ func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
 }
 
 func (server *WS) handleUnSubscribe(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msg)
+	rpcMessage, err := parseCallMessage(msgUnsubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
