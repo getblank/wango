@@ -155,8 +155,19 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 		logger.Error("Can't parse rpc message", err.Error())
 		return
 	}
+
 	uri := rpcMessage.URI
 	handler, ok := server.rpcHandlers[uri]
+	if !ok {
+		var rgx *regexp.Regexp
+		for rgx, handler = range server.rpcRgxHandlers {
+			if rgx.MatchString(uri) {
+				ok = true
+				break
+			}
+		}
+	}
+
 	if ok {
 		res, err := handler(c.id, uri, rpcMessage.Args...)
 		if err != nil {
@@ -169,19 +180,7 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 		c.send(response)
 		return
 	}
-	for rgx, handler := range server.rpcRgxHandlers {
-		if rgx.MatchString(uri) {
-			res, err := handler(c.id, uri, rpcMessage.Args...)
-			if err != nil {
-				response, _ := createMessage(msgCallError, rpcMessage.CallID, err)
-				c.send(response)
-				return
-			}
-			response, _ := createMessage(msgCallResult, rpcMessage.CallID, res)
-			c.send(response)
-			return
-		}
-	}
+
 	response, _ := createMessage(msgCallError, rpcMessage.CallID, ErrRPCNotRegistered)
 	c.send(response)
 }
