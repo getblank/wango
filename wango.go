@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ivahaev/go-logger"
-
 	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
@@ -136,8 +134,7 @@ func (server *WS) receive(c *conn) {
 		msgType, msg, err := parseMessage(data)
 		if err != nil {
 			// error parsing!!!
-			logger.Error(err)
-			continue
+			println("Error:", err.Error())
 		}
 		switch msgType {
 		case msgCall:
@@ -152,7 +149,7 @@ func (server *WS) receive(c *conn) {
 func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 	rpcMessage, err := parseCallMessage(msg)
 	if err != nil {
-		logger.Error("Can't parse rpc message", err.Error())
+		println("Can't parse rpc message", err.Error())
 		return
 	}
 
