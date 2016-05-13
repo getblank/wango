@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"regexp"
 	"testing"
 	"time"
 
@@ -48,16 +49,44 @@ func TestClosingConcurrentConnections(t *testing.T) {
 func TestRPCHandling(t *testing.T) {
 	path := "/wamp-rpc"
 	server := createWampServer(path)
-	server.RegisterRPCHandler("net.wango.test", testRPCHandler)
+
+	var uri = "net.wango.test"
+	server.RegisterRPCHandler(uri, testRPCHandler)
 	if len(server.rpcHandlers) != 1 {
 		t.Fatal("No handlers registered")
 	}
-	res, err := connectAndRPC(path, "net.wango.test", nil)
-	println(res, err)
+	res, err := connectAndRPC(path, uri, nil)
+	if err != nil {
+		t.Fatal("RPC failed")
+	}
+	if res.(string) != "test-"+uri {
+		t.Fatal("invalid RPC befaviour")
+	}
+
+	uri = "net.wango.rgx"
+	server.RegisterRPCHandler(regexp.MustCompile(`^net\.wango\..*`), testRPCHandler)
+	res, err = connectAndRPC(path, uri, nil)
+	if err != nil {
+		t.Fatal("RPC failed")
+	}
+	if res.(string) != "test-"+uri {
+		t.Fatal("invalid RPC befaviour")
+	}
+
+	uri = "wango.rgx"
+	server.RegisterRPCHandler(regexp.MustCompile(`^wango\..*`), testRPCHandlerWithErrorReturn)
+	res, err = connectAndRPC(path, uri, nil)
+	if err == nil {
+		t.Fatal("RPC failed. No error returns")
+	}
 }
 
 func testRPCHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
 	return "test-" + uri, nil
+}
+
+func testRPCHandlerWithErrorReturn(connID string, uri string, args ...interface{}) (interface{}, error) {
+	return nil, errors.New("RPC error")
 }
 
 func connectForOneSecond(path string) {

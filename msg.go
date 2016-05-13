@@ -13,3 +13,14 @@ func createHeartbeatEvent(counter int) ([]byte, error) {
 func createWelcomeMessage(id string) ([]byte, error) {
 	return createMessage(msgWelcome, id, identity)
 }
+
+func createError(err interface{}) string {
+	var text string
+	switch err.(type) {
+	case error:
+		text = err.(error).Error()
+	case string:
+		text = err.(string)
+	}
+	return "error#" + text
+}

@@ -171,7 +171,7 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 	if ok {
 		res, err := handler(c.id, uri, rpcMessage.Args...)
 		if err != nil {
-			response, _ := createMessage(msgCallError, rpcMessage.CallID, err)
+			response, _ := createMessage(msgCallError, rpcMessage.CallID, createError(err))
 			// TODO: error handling
 			c.send(response)
 			return
@@ -181,7 +181,7 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 		return
 	}
 
-	response, _ := createMessage(msgCallError, rpcMessage.CallID, ErrRPCNotRegistered)
+	response, _ := createMessage(msgCallError, rpcMessage.CallID, createError(ErrRPCNotRegistered))
 	c.send(response)
 }
 
