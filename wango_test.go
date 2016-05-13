@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -228,23 +229,28 @@ func connectAndSub(t *testing.T, path, uri string, args ...interface{}) {
 	}()
 
 	timer := time.NewTimer(time.Second)
-	select {
-	case msg := <-ch:
-		var message []interface{}
-		err = json.Unmarshal([]byte(msg), &message)
-		if err != nil {
-			t.Fatal("Can't unmarshal message")
-		}
-		if message[1].(string) == uri {
-			if message[0].(float64) == msgSubscribed {
-				return
+	for {
+		select {
+		case msg := <-ch:
+			var message []interface{}
+			err = json.Unmarshal([]byte(msg), &message)
+			if err != nil {
+				t.Fatal("Can't unmarshal message")
 			}
-			if message[0].(float64) == msgSubscribeError {
-				t.Fatal(message[2])
+			if message[1].(string) == uri {
+				if message[0].(float64) == msgSubscribed {
+					return
+				}
+				if message[0].(float64) == msgSubscribeError {
+					if args != nil && args[0].(bool) {
+						return
+					}
+					t.Fatal(message[2])
+				}
 			}
+		case <-timer.C:
+			t.Fatal("Time is gone")
 		}
-	case <-timer.C:
-		t.Fatal("Time is gone")
 	}
 }
 
@@ -296,6 +302,56 @@ func connectAndWaitForEvent(t *testing.T, path, uri string, args ...interface{})
 	}
 
 	return nil, nil
+}
+
+func connectAndHeartbeat(t *testing.T, path, uri string, args ...interface{}) {
+	ws, err := websocket.Dial(url+path, "", origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+	currentHB := 0
+	ch := make(chan string)
+
+	go func() {
+		var msg string
+		err := websocket.Message.Receive(ws, &msg)
+		if err != nil {
+			t.Fatal("Message receive failed", err)
+		}
+		ch <- msg
+	}()
+
+	go func() {
+		err := websocket.Message.Send(ws, `["HB",`+strconv.Itoa(currentHB)+`]`)
+		if err != nil {
+			t.Fatal("Message send failed", err)
+		}
+		currentHB++
+	}()
+
+	timer := time.NewTimer(time.Second * 2)
+	for {
+		select {
+		case msg := <-ch:
+			var message []interface{}
+			err = json.Unmarshal([]byte(msg), &message)
+			if err != nil {
+				t.Fatal("Can't unmarshal message")
+			}
+			if message[0].(float64) == msgHeartbeat {
+				if int(message[1].(float64)) != currentHB {
+					t.Fatal("Heartbeat is not matched", message[1], "!=", currentHB)
+				}
+			}
+		case <-timer.C:
+			println("Current heartbeat", currentHB)
+			if currentHB != 6 {
+				t.Fatal("Heartbeat is not working")
+			}
+			return
+		}
+	}
 }
 
 func createWampServer(path string) *WS {

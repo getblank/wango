@@ -226,6 +226,7 @@ func (server *WS) receive(c *conn) {
 		case msgEvent:
 		case msgSubscribed:
 		case msgHeartbeat:
+			server.handleHeartbeat(c, msg, data)
 		}
 	}
 }
@@ -283,16 +284,16 @@ func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
 					server.subscribers[_uri] = subscribersMap{}
 				}
 				server.subscribers[_uri][c.id] = subscriberExists
-				response, _ := createMessage(msgSubscribed, rpcMessage.CallID)
+				response, _ := createMessage(msgSubscribed, _uri)
 				go c.send(response)
 				return
 			}
-			response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrForbidden))
+			response, _ := createMessage(msgSubscribeError, _uri, createError(ErrForbidden))
 			go c.send(response)
 			return
 		}
 	}
-	response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrSubURINotRegistered))
+	response, _ := createMessage(msgSubscribeError, _uri, createError(ErrSubURINotRegistered))
 	go c.send(response)
 }
 
@@ -321,7 +322,10 @@ func (server *WS) handleUnSubscribe(c *conn, msg []interface{}) {
 	}
 	response, _ := createMessage(msgUnSubscribeError, _uri, createError(ErrSubURINotRegistered))
 	go c.send(response)
+}
 
+func (server *WS) handleHeartbeat(c *conn, msg []interface{}, data string) {
+	c.send(data)
 }
 
 func (c *conn) send(msg interface{}) {
