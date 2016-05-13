@@ -25,6 +25,8 @@ const (
 	msgEvent
 	msgSubscribed
 	msgSubscribeError
+	msgUnsubscribed
+	msgUnSubscribeError
 	msgHeartbeat = 20
 )
 
@@ -49,27 +51,32 @@ var (
 		8:  "EVENT",
 		9:  "SUBSCRIBED",
 		10: "SUBSCRIBEERROR",
+		11: "UNSUBSCRIBED",
+		12: "UNSUBSCRIBEERROR",
 		20: "HB",
 	}
 	msgTxtTypes = map[string]int{
-		"WELCOME":        0,
-		"PREFIX":         1,
-		"CALL":           2,
-		"CALLRESULT":     3,
-		"CALLERROR":      4,
-		"SUBSCRIBE":      5,
-		"UNSUBSCRIBE":    6,
-		"PUBLISH":        7,
-		"EVENT":          8,
-		"SUBSCRIBED":     9,
-		"SUBSCRIBEERROR": 10,
-		"HB":             20,
+		"WELCOME":          0,
+		"PREFIX":           1,
+		"CALL":             2,
+		"CALLRESULT":       3,
+		"CALLERROR":        4,
+		"SUBSCRIBE":        5,
+		"UNSUBSCRIBE":      6,
+		"PUBLISH":          7,
+		"EVENT":            8,
+		"SUBSCRIBED":       9,
+		"SUBSCRIBEERROR":   10,
+		"UNSUBSCRIBED":     11,
+		"UNSUBSCRIBEERROR": 12,
+		"HB":               20,
 	}
 
 	ErrHandlerAlreadyRegistered = errors.New("Handler already registered")
 	ErrRPCNotRegistered         = errors.New("RPC not registered")
 	ErrSubURINotRegistered      = errors.New("Sub URI not registered")
 	ErrForbidden                = errors.New("403 forbidden")
+	ErrNotSubscribes            = errors.New("Not subscribed")
 )
 
 type callMsg struct {
@@ -268,25 +275,54 @@ func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
 	}
 
 	_uri := rpcMessage.URI
+	server.subscribersLocker.Lock()
+	defer server.subscribersLocker.Unlock()
 	for uri, handler := range server.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
 			if handler.subHandler(c.id, _uri, rpcMessage.Args...) {
-				server.subscribersLocker.Lock()
 				if _, ok := server.subscribers[_uri]; !ok {
 					server.subscribers[_uri] = subscribersMap{}
 				}
 				server.subscribers[_uri][c.id] = subscriberExists
-				server.subscribersLocker.Unlock()
 				response, _ := createMessage(msgSubscribed, rpcMessage.CallID)
-				c.send(response)
+				go c.send(response)
 				return
 			}
 			response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrForbidden))
-			c.send(response)
+			go c.send(response)
+			return
 		}
 	}
 	response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrSubURINotRegistered))
-	c.send(response)
+	go c.send(response)
+}
+
+func (server *WS) handleUnSubscribe(c *conn, msg []interface{}) {
+	rpcMessage, err := parseCallMessage(msg)
+	if err != nil {
+		println("Can't parse rpc message", err.Error())
+		return
+	}
+
+	_uri := rpcMessage.URI
+	server.subscribersLocker.Lock()
+	defer server.subscribersLocker.Unlock()
+	for uri, subscribers := range server.subscribers {
+		if uri == _uri {
+			if _, ok := subscribers[c.id]; ok {
+				delete(subscribers, c.id)
+				response, _ := createMessage(msgUnsubscribed, _uri)
+				go c.send(response)
+				return
+			}
+			response, _ := createMessage(msgUnSubscribeError, _uri, createError(ErrNotSubscribes))
+			go c.send(response)
+			return
+		}
+	}
+	response, _ := createMessage(msgUnSubscribeError, _uri, createError(ErrSubURINotRegistered))
+	go c.send(response)
+
 }
 
 func (c *conn) send(msg interface{}) {

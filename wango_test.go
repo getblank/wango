@@ -103,7 +103,7 @@ func TestSubHandling(t *testing.T) {
 	uri := "wango.sub-test"
 	err := server.RegisterSubHandler(uri, testSubHandler, nil)
 	if err != nil {
-		t.Fatal("Can't register handler")
+		t.Fatal("Can't register handler", err)
 	}
 	if len(server.subHandlers) != 1 {
 		t.Fatal("subHandler not registered")
@@ -119,7 +119,7 @@ func TestSubHandling(t *testing.T) {
 
 	_, err = connectAndSub(path, uri+".test", nil)
 	if err != nil {
-		t.Fatal("Subscribe failed")
+		t.Fatal("Subscribe failed", err)
 	}
 
 	if len(server.subscribers) == 0 {
