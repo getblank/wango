@@ -33,6 +33,7 @@ const (
 	hbTimeout          = time.Second * 5
 	sendChanBufferSize = 50
 	identity           = "wango"
+	subscriberExists   = true
 )
 
 var (
@@ -67,6 +68,8 @@ var (
 
 	ErrHandlerAlreadyRegistered = errors.New("Handler already registered")
 	ErrRPCNotRegistered         = errors.New("RPC not registered")
+	ErrSubURINotRegistered      = errors.New("Sub URI not registered")
+	ErrForbidden                = errors.New("403 forbidden")
 )
 
 type callMsg struct {
@@ -75,15 +78,18 @@ type callMsg struct {
 	Args   []interface{}
 }
 
+type subscribersMap map[string]bool
+
 type WS struct {
 	connections       map[string]*conn
 	connectionsLocker sync.RWMutex
 	rpcHandlers       map[string]RPCHandler
 	rpcRgxHandlers    map[*regexp.Regexp]RPCHandler
-	subHandlers       map[string]SubHandler
-	// subscribers       subscr
-	openCB  func()
-	closeCB func()
+	subHandlers       map[string]subHandler
+	subscribers       map[string]subscribersMap
+	subscribersLocker sync.RWMutex
+	openCB            func()
+	closeCB           func()
 }
 
 func New() *WS {
@@ -91,7 +97,8 @@ func New() *WS {
 	server.connections = map[string]*conn{}
 	server.rpcHandlers = map[string]RPCHandler{}
 	server.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
-	server.subHandlers = map[string]SubHandler{}
+	server.subHandlers = map[string]subHandler{}
+	server.subscribers = map[string]subscribersMap{}
 	return server
 }
 
@@ -105,8 +112,10 @@ func (server *WS) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
 		server.rpcHandlers[uri] = fn
 	case *regexp.Regexp:
 		rgx := _uri.(*regexp.Regexp)
-		if _, ok := server.rpcRgxHandlers[rgx]; ok {
-			return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering rgx rpcHandler")
+		for k := range server.rpcRgxHandlers {
+			if k.String() == rgx.String() {
+				return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering rgx rpcHandler")
+			}
 		}
 		server.rpcRgxHandlers[rgx] = fn
 	}
@@ -114,13 +123,63 @@ func (server *WS) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
 	return nil
 }
 
-func (server *WS) RegisterSubHandler(uri string, fn SubHandler) error {
+func (server *WS) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandler) error {
 	if _, ok := server.subHandlers[uri]; ok {
 		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
 	}
 
-	server.subHandlers[uri] = fn
+	server.subHandlers[uri] = subHandler{
+		subHandler: fnSub,
+		pubHandler: fnPub,
+	}
 	return nil
+}
+
+func (server *WS) Publish(uri string, event interface{}) {
+	var pubHandler PubHandler
+	handler, ok := server.subHandlers[uri]
+	if ok {
+		pubHandler = handler.pubHandler
+	}
+	server.subscribersLocker.RLock()
+	subscribers, ok := server.subscribers[uri]
+	if !ok {
+		server.subscribersLocker.RUnlock()
+		return
+	}
+	if len(subscribers) == 0 {
+		server.subscribersLocker.RUnlock()
+		return
+	}
+	// need to copy ids to prevent long locking
+	subscriberIds := make([]string, len(subscribers))
+	i := 0
+	for id := range subscribers {
+		subscriberIds[i] = id
+		i++
+	}
+	server.subscribersLocker.RUnlock()
+
+	for _, id := range subscriberIds {
+		c, err := server.getConnection(id)
+		if err != nil {
+			println("Connection not found", err)
+			continue
+		}
+
+		var response []byte
+		if pubHandler != nil {
+			allow, modifiedEvent := pubHandler(uri, event, c.extra)
+			if !allow {
+				// not allowed to send
+				continue
+			}
+			response, _ = createMessage(msgEvent, uri, modifiedEvent)
+		} else {
+			response, _ = createMessage(msgEvent, uri, event)
+		}
+		c.send(response)
+	}
 }
 
 func (server *WS) WampHandler(ws *websocket.Conn, extra interface{}) {
@@ -211,9 +270,23 @@ func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
 	_uri := rpcMessage.URI
 	for uri, handler := range server.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
-			handler(c.id, uri, rpcMessage.Args...)
+			if handler.subHandler(c.id, _uri, rpcMessage.Args...) {
+				server.subscribersLocker.Lock()
+				if _, ok := server.subscribers[_uri]; !ok {
+					server.subscribers[_uri] = subscribersMap{}
+				}
+				server.subscribers[_uri][c.id] = subscriberExists
+				server.subscribersLocker.Unlock()
+				response, _ := createMessage(msgSubscribed, rpcMessage.CallID)
+				c.send(response)
+				return
+			}
+			response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrForbidden))
+			c.send(response)
 		}
 	}
+	response, _ := createMessage(msgSubscribeError, rpcMessage.CallID, createError(ErrSubURINotRegistered))
+	c.send(response)
 }
 
 func (c *conn) send(msg interface{}) {
@@ -222,7 +295,10 @@ func (c *conn) send(msg interface{}) {
 
 func (c *conn) sender() {
 	for msg := range c.sendChan {
-		websocket.Message.Send(c.connection, msg)
+		err := websocket.Message.Send(c.connection, msg)
+		if err != nil {
+			println("Error when send message", err)
+		}
 	}
 }
 
@@ -268,6 +344,14 @@ type RPCHandler func(connID string, uri string, args ...interface{}) (interface{
 
 // SubHandler describes func for handling RPC requests
 type SubHandler func(connID string, uri string, args ...interface{}) bool
+
+// PubHandler describes func for handling publish event before sending to subscribers
+type PubHandler func(uri string, event interface{}, extra interface{}) (bool, interface{})
+
+type subHandler struct {
+	subHandler SubHandler
+	pubHandler PubHandler
+}
 
 func newUUIDv4() string {
 	u := [16]byte{}
