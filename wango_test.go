@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,12 +82,30 @@ func TestRPCHandling(t *testing.T) {
 	}
 }
 
+func TestSubHandling(t *testing.T) {
+	path := "/wamp-sub"
+	server := createWampServer(path)
+
+	uri := "wango.sub-test"
+	server.RegisterSubHandler(uri, testSubHandler)
+	if len(server.subHandlers) != 1 {
+		t.Fatal("subHandler not registered")
+	}
+}
+
 func testRPCHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
 	return "test-" + uri, nil
 }
 
 func testRPCHandlerWithErrorReturn(connID string, uri string, args ...interface{}) (interface{}, error) {
 	return nil, errors.New("RPC error")
+}
+
+func testSubHandler(connID string, uri string, args ...interface{}) bool {
+	if strings.Contains(uri, "error") {
+		return false
+	}
+	return true
 }
 
 func connectForOneSecond(path string) {

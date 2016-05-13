@@ -5,6 +5,7 @@ import (
 	"io"
 	"math/rand"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,7 +80,7 @@ type WS struct {
 	connectionsLocker sync.RWMutex
 	rpcHandlers       map[string]RPCHandler
 	rpcRgxHandlers    map[*regexp.Regexp]RPCHandler
-	// subHandlers       map[regexp]subHandler
+	subHandlers       map[string]SubHandler
 	// subscribers       subscr
 	openCB  func()
 	closeCB func()
@@ -90,6 +91,7 @@ func New() *WS {
 	server.connections = map[string]*conn{}
 	server.rpcHandlers = map[string]RPCHandler{}
 	server.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
+	server.subHandlers = map[string]SubHandler{}
 	return server
 }
 
@@ -98,17 +100,26 @@ func (server *WS) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
 	case string:
 		uri := _uri.(string)
 		if _, ok := server.rpcHandlers[uri]; ok {
-			return ErrHandlerAlreadyRegistered
+			return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering string rpcHandler")
 		}
 		server.rpcHandlers[uri] = fn
 	case *regexp.Regexp:
 		rgx := _uri.(*regexp.Regexp)
 		if _, ok := server.rpcRgxHandlers[rgx]; ok {
-			return ErrHandlerAlreadyRegistered
+			return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering rgx rpcHandler")
 		}
 		server.rpcRgxHandlers[rgx] = fn
 	}
 
+	return nil
+}
+
+func (server *WS) RegisterSubHandler(uri string, fn SubHandler) error {
+	if _, ok := server.subHandlers[uri]; ok {
+		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
+	}
+
+	server.subHandlers[uri] = fn
 	return nil
 }
 
@@ -137,10 +148,18 @@ func (server *WS) receive(c *conn) {
 			println("Error:", err.Error())
 		}
 		switch msgType {
+		case msgPrefix:
+		// not implemented
 		case msgCall:
 			server.handleRPCCall(c, msg)
+		case msgCallResult:
+		case msgCallError:
 		case msgSubscribe:
+			server.handleSubscribe(c, msg)
 		case msgUnsubscribe:
+		case msgPublish:
+		case msgEvent:
+		case msgSubscribed:
 		case msgHeartbeat:
 		}
 	}
@@ -180,6 +199,21 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 
 	response, _ := createMessage(msgCallError, rpcMessage.CallID, createError(ErrRPCNotRegistered))
 	c.send(response)
+}
+
+func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
+	rpcMessage, err := parseCallMessage(msg)
+	if err != nil {
+		println("Can't parse rpc message", err.Error())
+		return
+	}
+
+	_uri := rpcMessage.URI
+	for uri, handler := range server.subHandlers {
+		if strings.HasPrefix(_uri, uri) {
+			handler(c.id, uri, rpcMessage.Args...)
+		}
+	}
 }
 
 func (c *conn) send(msg interface{}) {
@@ -231,6 +265,9 @@ type conn struct {
 
 // RPCHandler describes func for handling RPC requests
 type RPCHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
+
+// SubHandler describes func for handling RPC requests
+type SubHandler func(connID string, uri string, args ...interface{}) bool
 
 func newUUIDv4() string {
 	u := [16]byte{}
