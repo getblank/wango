@@ -198,6 +198,7 @@ func (server *WS) WampHandler(ws *websocket.Conn, extra interface{}) {
 }
 
 func (server *WS) receive(c *conn) {
+	defer c.connection.Close()
 	var data string
 	for {
 		err := websocket.Message.Receive(c.connection, &data)
@@ -368,7 +369,12 @@ func (server *WS) getConnection(id string) (*conn, error) {
 func (server *WS) deleteConnection(id string) {
 	server.connectionsLocker.Lock()
 	defer server.connectionsLocker.Unlock()
+	server.subscribersLocker.Lock()
+	defer server.subscribersLocker.Unlock()
 	delete(server.connections, id)
+	for _, subscribers := range server.subscribers {
+		delete(subscribers, id)
+	}
 }
 
 type conn struct {
