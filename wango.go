@@ -79,7 +79,7 @@ var (
 	ErrNotSubscribes            = errors.New("Not subscribed")
 )
 
-type callMsg struct {
+type wampMsg struct {
 	CallID string
 	URI    string
 	Args   []interface{}
@@ -223,7 +223,9 @@ func (server *WS) receive(c *conn) {
 		case msgSubscribe:
 			server.handleSubscribe(c, msg)
 		case msgUnsubscribe:
+			server.handleUnSubscribe(c, msg)
 		case msgPublish:
+			server.handlePublish(c, msg)
 		case msgEvent:
 		case msgSubscribed:
 		case msgHeartbeat:
@@ -233,7 +235,7 @@ func (server *WS) receive(c *conn) {
 }
 
 func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msgCall, msg)
+	rpcMessage, err := parseWampMessage(msgCall, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
@@ -269,18 +271,18 @@ func (server *WS) handleRPCCall(c *conn, msg []interface{}) {
 }
 
 func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msgSubscribe, msg)
+	subMessage, err := parseWampMessage(msgSubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
 	}
 
-	_uri := rpcMessage.URI
+	_uri := subMessage.URI
 	server.subscribersLocker.Lock()
 	defer server.subscribersLocker.Unlock()
 	for uri, handler := range server.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
-			if handler.subHandler(c.id, _uri, rpcMessage.Args...) {
+			if handler.subHandler(c.id, _uri, subMessage.Args...) {
 				if _, ok := server.subscribers[_uri]; !ok {
 					server.subscribers[_uri] = subscribersMap{}
 				}
@@ -299,13 +301,13 @@ func (server *WS) handleSubscribe(c *conn, msg []interface{}) {
 }
 
 func (server *WS) handleUnSubscribe(c *conn, msg []interface{}) {
-	rpcMessage, err := parseCallMessage(msgUnsubscribe, msg)
+	unsubMessage, err := parseWampMessage(msgUnsubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
 		return
 	}
 
-	_uri := rpcMessage.URI
+	_uri := unsubMessage.URI
 	server.subscribersLocker.Lock()
 	defer server.subscribersLocker.Unlock()
 	for uri, subscribers := range server.subscribers {
@@ -327,6 +329,19 @@ func (server *WS) handleUnSubscribe(c *conn, msg []interface{}) {
 
 func (server *WS) handleHeartbeat(c *conn, msg []interface{}, data string) {
 	c.send(data)
+}
+
+func (server *WS) handlePublish(c *conn, msg []interface{}) {
+	pubMessage, err := parseWampMessage(msgUnsubscribe, msg)
+	if err != nil {
+		println("Can't parse publish message", err.Error())
+		return
+	}
+	var event interface{}
+	if len(pubMessage.Args) > 0 {
+		event = pubMessage.Args[0]
+	}
+	server.Publish(pubMessage.URI, event)
 }
 
 func (c *conn) send(msg interface{}) {

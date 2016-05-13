@@ -32,7 +32,7 @@ func TestParseValidSubMessage(t *testing.T) {
 		t.Fatal("Invalid count element msg", msg)
 	}
 
-	res, err := parseCallMessage(msgSubscribe, msg)
+	res, err := parseWampMessage(msgSubscribe, msg)
 	if err != nil {
 		t.Fatal("Can't parse sub message", err)
 	}
@@ -46,7 +46,7 @@ func TestParseInvalidRPCMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal("Invalid invalidMessage", err)
 	}
-	_, err = parseCallMessage(msgCall, msg)
+	_, err = parseWampMessage(msgCall, msg)
 
 	if err == nil {
 		t.Fatal("InvalidMessage parsed without error", err)
