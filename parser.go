@@ -28,23 +28,38 @@ func parseMessage(_msg string) (int, []interface{}, error) {
 	return 0, nil, errors.New("unknown call type")
 }
 
-func parseCallMessage(msg []interface{}) (*callMsg, error) {
-	if len(msg) < 3 {
+func parseCallMessage(typ int, msg []interface{}) (*callMsg, error) {
+	if typ == msgCall && len(msg) < 3 {
+		return nil, errors.New("invalid wamp message")
+	} else if len(msg) < 2 {
 		return nil, errors.New("invalid wamp message")
 	}
-	callID, ok := msg[1].(string)
-	if !ok {
-		return nil, errors.New("invalid wamp message. callID is not a string")
-	}
-	uri, ok := msg[2].(string)
-	if !ok {
-		return nil, errors.New("invalid wamp message. uri is not a string")
-	}
 	message := new(callMsg)
-	message.CallID = callID
-	message.URI = uri
-	if len(msg) > 3 {
-		message.Args = msg[2:]
+	switch typ {
+	case msgCall:
+		callID, ok := msg[1].(string)
+		if !ok {
+			return nil, errors.New("invalid wamp message. callID is not a string")
+		}
+		uri, ok := msg[2].(string)
+		if !ok {
+			return nil, errors.New("invalid wamp message. uri is not a string")
+		}
+		message.CallID = callID
+		message.URI = uri
+		if len(msg) > 3 {
+			message.Args = msg[2:]
+		}
+
+	case msgSubscribe, msgUnsubscribe:
+		uri, ok := msg[1].(string)
+		if !ok {
+			return nil, errors.New("invalid wamp message. uri is not a string")
+		}
+		message.URI = uri
+		if len(msg) > 2 {
+			message.Args = msg[1:]
+		}
 	}
 	return message, nil
 }
