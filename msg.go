@@ -7,6 +7,10 @@ func createMessage(args ...interface{}) ([]byte, error) {
 }
 
 func createHeartbeatEvent(counter int) ([]byte, error) {
+	return createMessage(msgHeartbeat, counter)
+}
+
+func createHeartbeatTxtEvent(counter int) ([]byte, error) {
 	return createMessage(msgIntTypes[msgHeartbeat], counter)
 }
 
