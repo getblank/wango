@@ -234,6 +234,7 @@ type conn struct {
 	sendChan   chan interface{}
 }
 
+// RPCHandler describes func for handling RPC requests
 type RPCHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
 
 func parseMessage(_msg string) (int, []interface{}, error) {
