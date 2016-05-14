@@ -156,7 +156,7 @@ func TestSubHandling(t *testing.T) {
 	}
 }
 
-func TestClientConnecting(t *testing.T) {
+func TestClientConnectingAndRPC(t *testing.T) {
 	path := "/wamp-client-connecting"
 	server := createWampServer(path)
 	server.RegisterRPCHandler("wango.test", testRPCHandlerForClient)
@@ -181,7 +181,109 @@ func TestClientConnecting(t *testing.T) {
 	if err == nil {
 		t.Fatal("Can't call")
 	}
+}
 
+func TestClientConnectingToInvalidURI(t *testing.T) {
+	_, err := Connect("invalid-uri", origin)
+	if err == nil {
+		t.Fatal("Must not connect to server", err.Error())
+	}
+}
+
+func TestClientConnectingAndPubSub(t *testing.T) {
+	path := "/wamp-client-sub"
+	subUri := "wango.sub"
+	server := createWampServer(path)
+	testRPCHandlerWithPub := func(connID string, uri string, args ...interface{}) (interface{}, error) {
+		pubUri := args[0].(string)
+		pubData := args[1]
+		server.Publish(pubUri, pubData)
+		return nil, nil
+	}
+	server.RegisterRPCHandler("wango.test", testRPCHandlerWithPub)
+	server.RegisterSubHandler(subUri, func(connID string, uri string, args ...interface{}) bool {
+		return true
+	}, nil)
+
+	url := "localhost:1234"
+	client, err := Connect(url+path, origin)
+	if err != nil {
+		t.Fatal("Can't connect to server", err.Error())
+	}
+
+	resChan := make(chan bool)
+	var counter int
+	err = client.Subscribe(subUri, func(uri string, event interface{}) {
+		if uri != subUri {
+			t.Fatal("Invalid URI")
+		}
+		if event.(string) != "test" {
+			t.Fatal("Invalid event")
+		}
+		if counter > 1 {
+			resChan <- true
+		}
+		counter++
+	})
+	if err != nil {
+		t.Fatal("Can't subscribe", err)
+	}
+
+	err = client.Subscribe("invalid."+subUri, func(uri string, event interface{}) {})
+	if err == nil {
+		t.Fatal("Subscribe to invalid uri must returns error", err)
+	}
+
+	err = client.Subscribe(subUri, func(uri string, event interface{}) {}, "12312312")
+	if err == nil {
+		t.Fatal("Subscribe to invalid connID must returns error", err)
+	}
+
+	err = client.Subscribe("", func(uri string, event interface{}) {})
+	if err == nil {
+		t.Fatal("Subscribe to empty uri must returns error", err)
+	}
+
+	_, err = client.Call("wango.test", subUri, "test")
+	if err != nil {
+		t.Fatal("Can't call")
+	}
+
+	_, err = client.Call("wango.test", subUri, "test")
+	if err != nil {
+		t.Fatal("Can't call")
+	}
+
+	server.Publish(subUri, "test")
+
+	time.Sleep(time.Millisecond)
+
+	err = client.Unsubscribe(subUri)
+	if err != nil {
+		t.Fatal("Can't unsubscribe")
+	}
+
+	err = client.Unsubscribe(subUri)
+	if err == nil {
+		t.Fatal("Not subscriber URI must not unsubscribe", err.Error())
+	}
+
+	err = client.Unsubscribe("")
+	if err == nil {
+		t.Fatal("Empty URI must not unsubscribe", err.Error())
+	}
+
+	err = client.Unsubscribe("", "12312")
+	if err == nil {
+		t.Fatal("Invalid connID must not unsubscribe", err.Error())
+	}
+
+	timer := time.NewTimer(time.Millisecond * 200)
+	select {
+	case <-timer.C:
+		t.Fatal("Time is gone")
+	case <-resChan:
+	}
 }
 
 func testRPCHandlerForClient(connID string, uri string, args ...interface{}) (interface{}, error) {

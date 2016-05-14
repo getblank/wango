@@ -152,7 +152,7 @@ func (w *Wango) Publish(uri string, event interface{}) {
 		} else {
 			response, _ = createMessage(msgEvent, uri, event)
 		}
-		c.send(response)
+		go c.send(response)
 	}
 }
 
@@ -192,7 +192,7 @@ func (w *Wango) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandle
 }
 
 // Subscribe sends subscribe request for uri provided
-func (w *Wango) Subscribe(uri string, id ...string) error {
+func (w *Wango) Subscribe(uri string, fn EventHandler, id ...string) error {
 	if uri == "" {
 		return errors.New("Empty uri")
 	}
@@ -204,6 +204,7 @@ func (w *Wango) Subscribe(uri string, id ...string) error {
 	if id != nil {
 		_c, ok := w.connections[id[0]]
 		if !ok {
+			w.connectionsLocker.RUnlock()
 			return errors.New("Connection not found for id: " + id[0])
 		}
 		c = _c
@@ -217,6 +218,10 @@ func (w *Wango) Subscribe(uri string, id ...string) error {
 
 	resChan := make(chan error)
 	c.subRequests.addRequest(c.id, uri, resChan)
+
+	c.eventHandlersLocker.Lock()
+	c.eventHandlers[uri] = fn
+	c.eventHandlersLocker.Unlock()
 
 	msg, _ := createMessage(msgSubscribe, uri)
 	c.send(msg)
@@ -234,11 +239,13 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 	if len(w.connections) == 0 {
 		return errors.New("No active connections")
 	}
+
 	w.connectionsLocker.RLock()
 	var c *conn
 	if id != nil {
 		_c, ok := w.connections[id[0]]
 		if !ok {
+			w.connectionsLocker.RUnlock()
 			return errors.New("Connection not found for id: " + id[0])
 		}
 		c = _c
@@ -253,7 +260,11 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 	resChan := make(chan error)
 	c.unsubRequests.addRequest(c.id, uri, resChan)
 
-	msg, _ := createMessage(msgSubscribe, uri)
+	c.eventHandlersLocker.Lock()
+	delete(c.eventHandlers, uri)
+	c.eventHandlersLocker.Unlock()
+
+	msg, _ := createMessage(msgUnsubscribe, uri)
 	c.send(msg)
 
 	err := <-resChan
@@ -554,7 +565,7 @@ func (w *Wango) handleHeartbeat(c *conn, msg []interface{}, data string) {
 }
 
 func (w *Wango) handlePublish(c *conn, msg []interface{}) {
-	pubMessage, err := parseWampMessage(msgUnsubscribe, msg)
+	pubMessage, err := parseWampMessage(msgPublish, msg)
 	if err != nil {
 		println("Can't parse publish message", err.Error())
 		return
@@ -574,6 +585,8 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
 	cn.sendChan = make(chan interface{}, sendChanBufferSize)
 	cn.eventHandlers = map[string]EventHandler{}
 	cn.callResults = map[string]chan *callResult{}
+	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
+	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn
