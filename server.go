@@ -10,8 +10,8 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Server represents a WAMP server that handles RPC and pub/sub.
-type Server struct {
+// Wango represents a WAMP server that handles RPC and pub/sub.
+type Wango struct {
 	connections       map[string]*conn
 	connectionsLocker sync.RWMutex
 	rpcHandlers       map[string]RPCHandler
@@ -19,8 +19,10 @@ type Server struct {
 	subHandlers       map[string]subHandler
 	subscribers       map[string]subscribersMap
 	subscribersLocker sync.RWMutex
-	openCB            func()
-	closeCB           func()
+	subRequests       subRequestsListeners
+	unsubRequests     subRequestsListeners
+	openCB            func(string)
+	closeCB           func(string)
 }
 
 // RPCHandler describes func for handling RPC requests
@@ -36,69 +38,67 @@ type subHandler struct {
 	subHandler SubHandler
 	pubHandler PubHandler
 }
+
 type subscribersMap map[string]bool
 
-// New creates new WS struct and returns pointer to it
-func NewServer() *Server {
-	server := new(Server)
-	server.connections = map[string]*conn{}
-	server.rpcHandlers = map[string]RPCHandler{}
-	server.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
-	server.subHandlers = map[string]subHandler{}
-	server.subscribers = map[string]subscribersMap{}
-	return server
+type subRequestsListeners struct {
+	locker    sync.Mutex
+	listeners map[string][]subRequestsListener
 }
 
-// RegisterRPCHandler registers RPC handler function for provided URI
-func (s *Server) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
-	switch _uri.(type) {
-	case string:
-		uri := _uri.(string)
-		if _, ok := s.rpcHandlers[uri]; ok {
-			return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering string rpcHandler")
-		}
-		s.rpcHandlers[uri] = fn
-	case *regexp.Regexp:
-		rgx := _uri.(*regexp.Regexp)
-		for k := range s.rpcRgxHandlers {
-			if k.String() == rgx.String() {
-				return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering rgx rpcHandler")
-			}
-		}
-		s.rpcRgxHandlers[rgx] = fn
-	}
-
-	return nil
+type subRequestsListener struct {
+	id string
+	ch chan error
 }
 
-// RegisterSubHandler registers subscription handler function for provided URI
-func (s *Server) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandler) error {
-	if _, ok := s.subHandlers[uri]; ok {
-		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
-	}
+// New creates new Wango and returns pointer to it
+func New() *Wango {
+	w := new(Wango)
+	w.connections = map[string]*conn{}
+	w.rpcHandlers = map[string]RPCHandler{}
+	w.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
+	w.subHandlers = map[string]subHandler{}
+	w.subscribers = map[string]subscribersMap{}
+	return w
+}
 
-	s.subHandlers[uri] = subHandler{
-		subHandler: fnSub,
-		pubHandler: fnPub,
+// Dial connects to server with provided URI and origin
+func (w *Wango) Dial(url, origin string) error {
+	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
+		url = "ws://" + url
 	}
+	ws, err := websocket.Dial(url, "wamp", origin)
+	if err != nil {
+		return errors.Wrap(err, "Can't connect to "+url)
+	}
+	c := w.addConnection(ws, nil)
+	defer w.deleteConnection(c.id)
+
+	err = c.receiveWelcome()
+	if err != nil {
+		return err
+	}
+	go c.sender()
+	w.receive(c)
+
 	return nil
 }
 
 // Publish used for publish event
-func (s *Server) Publish(uri string, event interface{}) {
+func (w *Wango) Publish(uri string, event interface{}) {
 	var pubHandler PubHandler
-	handler, ok := s.subHandlers[uri]
+	handler, ok := w.subHandlers[uri]
 	if ok {
 		pubHandler = handler.pubHandler
 	}
-	s.subscribersLocker.RLock()
-	subscribers, ok := s.subscribers[uri]
+	w.subscribersLocker.RLock()
+	subscribers, ok := w.subscribers[uri]
 	if !ok {
-		s.subscribersLocker.RUnlock()
+		w.subscribersLocker.RUnlock()
 		return
 	}
 	if len(subscribers) == 0 {
-		s.subscribersLocker.RUnlock()
+		w.subscribersLocker.RUnlock()
 		return
 	}
 	// need to copy ids to prevent long locking
@@ -108,9 +108,9 @@ func (s *Server) Publish(uri string, event interface{}) {
 		subscriberIds[i] = id
 		i++
 	}
-	s.subscribersLocker.RUnlock()
+	w.subscribersLocker.RUnlock()
 	for _, id := range subscriberIds {
-		c, err := s.getConnection(id)
+		c, err := w.getConnection(id)
 		if err != nil {
 			println("Connection not found", err)
 			continue
@@ -131,18 +131,125 @@ func (s *Server) Publish(uri string, event interface{}) {
 	}
 }
 
+// RegisterRPCHandler registers RPC handler function for provided URI
+func (w *Wango) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
+	switch _uri.(type) {
+	case string:
+		uri := _uri.(string)
+		if _, ok := w.rpcHandlers[uri]; ok {
+			return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering string rpcHandler")
+		}
+		w.rpcHandlers[uri] = fn
+	case *regexp.Regexp:
+		rgx := _uri.(*regexp.Regexp)
+		for k := range w.rpcRgxHandlers {
+			if k.String() == rgx.String() {
+				return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering rgx rpcHandler")
+			}
+		}
+		w.rpcRgxHandlers[rgx] = fn
+	}
+
+	return nil
+}
+
+// RegisterSubHandler registers subscription handler function for provided URI
+func (w *Wango) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandler) error {
+	if _, ok := w.subHandlers[uri]; ok {
+		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
+	}
+
+	w.subHandlers[uri] = subHandler{
+		subHandler: fnSub,
+		pubHandler: fnPub,
+	}
+	return nil
+}
+
+// Subscribe sends subscribe request for uri provided
+func (w *Wango) Subscribe(uri string, id ...string) error {
+	if uri == "" {
+		return errors.New("Empty uri")
+	}
+	if len(w.connections) == 0 {
+		return errors.New("No active connections")
+	}
+	w.connectionsLocker.RLock()
+	var c *conn
+	if id != nil {
+		_c, ok := w.connections[id[0]]
+		if !ok {
+			return errors.New("Connection not found for id: " + id[0])
+		}
+		c = _c
+	} else {
+		for _, _c := range w.connections {
+			c = _c
+			break
+		}
+	}
+	w.connectionsLocker.RUnlock()
+
+	resChan := make(chan error)
+	w.subRequests.addRequest(c.id, uri, resChan)
+
+	msg, _ := createMessage(msgSubscribe, uri)
+	c.send(msg)
+
+	err := <-resChan
+
+	return err
+}
+
+// Unsubscribe sends unsubscribe request for uri provided
+func (w *Wango) Unsubscribe(uri string, id ...string) error {
+	if uri == "" {
+		return errors.New("Empty uri")
+	}
+	if len(w.connections) == 0 {
+		return errors.New("No active connections")
+	}
+	w.connectionsLocker.RLock()
+	var c *conn
+	if id != nil {
+		_c, ok := w.connections[id[0]]
+		if !ok {
+			return errors.New("Connection not found for id: " + id[0])
+		}
+		c = _c
+	} else {
+		for _, _c := range w.connections {
+			c = _c
+			break
+		}
+	}
+	w.connectionsLocker.RUnlock()
+
+	resChan := make(chan error)
+	w.unsubRequests.addRequest(c.id, uri, resChan)
+
+	msg, _ := createMessage(msgSubscribe, uri)
+	c.send(msg)
+
+	err := <-resChan
+
+	return err
+}
+
 // WampHandler handles every *websocket.Conn connection
 // If extra data provided, it will kept in connection and will pass to rpc/pub/sub handlers
-func (s *Server) WampHandler(ws *websocket.Conn, extra interface{}) {
-	c := s.addConnection(ws, extra)
-	defer s.deleteConnection(c.id)
+func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
+	c := w.addConnection(ws, extra)
+	defer w.deleteConnection(c.id)
 
 	go c.sender()
 
-	s.receive(c)
+	response, _ := createWelcomeMessage(c.id)
+	c.send(response)
+	w.receive(c)
 }
 
-func (s *Server) receive(c *conn) {
+func (w *Wango) receive(c *conn) {
 	defer c.connection.Close()
 	var data string
 	for {
@@ -162,25 +269,113 @@ func (s *Server) receive(c *conn) {
 		case msgPrefix:
 		// not implemented
 		case msgCall:
-			s.handleRPCCall(c, msg)
+			w.handleRPCCall(c, msg)
+
 		case msgCallResult:
+			w.handleCallResult(c, msg)
+
 		case msgCallError:
+			w.handleCallError(c, msg)
+
 		case msgSubscribe:
-			s.handleSubscribe(c, msg)
+			w.handleSubscribe(c, msg)
+
 		case msgUnsubscribe:
-			s.handleUnSubscribe(c, msg)
+			w.handleUnSubscribe(c, msg)
+
 		case msgPublish:
-			s.handlePublish(c, msg)
+			w.handlePublish(c, msg)
+
 		case msgEvent:
+			w.handleEvent(c, msg)
+
 		case msgSubscribed:
-		// not implemented
+			w.handleSubscribed(c, msg)
+
+		case msgSubscribeError:
+			w.handleSubscribeError(c, msg)
+
+		case msgUnsubscribed:
+			w.handleUnsubscribed(c, msg)
+
+		case msgUnsubscribeError:
+			w.handleUnsubscribeError(c, msg)
+
 		case msgHeartbeat:
-			s.handleHeartbeat(c, msg, data)
+			w.handleHeartbeat(c, msg, data)
 		}
 	}
 }
 
-func (s *Server) handleRPCCall(c *conn, msg []interface{}) {
+func (w *Wango) handleCallResult(c *conn, msg []interface{}) {
+
+}
+
+func (w *Wango) handleCallError(c *conn, msg []interface{}) {
+
+}
+
+func (w *Wango) handleEvent(c *conn, msg []interface{}) {
+
+}
+
+func (w *Wango) handleSubscribed(c *conn, msg []interface{}) {
+	subMessage, err := parseWampMessage(msgSubscribed, msg)
+	if err != nil {
+		println(err)
+	}
+	listeners := w.subRequests.getRequests(subMessage.URI)
+	for _, l := range listeners {
+		l.ch <- nil
+	}
+}
+
+func (w *Wango) handleSubscribeError(c *conn, msg []interface{}) {
+	subMessage, err := parseWampMessage(msgSubscribeError, msg)
+	if err != nil {
+		println(err)
+	}
+	listeners := w.subRequests.getRequests(subMessage.URI)
+	err = errors.New("Sub error#")
+	if len(subMessage.Args) != 0 {
+		if _err, ok := subMessage.Args[0].(string); ok {
+			err = errors.New("Sub error#" + _err)
+		}
+	}
+	for _, l := range listeners {
+		l.ch <- err
+	}
+}
+
+func (w *Wango) handleUnsubscribed(c *conn, msg []interface{}) {
+	subMessage, err := parseWampMessage(msgUnsubscribed, msg)
+	if err != nil {
+		println(err)
+	}
+	listeners := w.unsubRequests.getRequests(subMessage.URI)
+	for _, l := range listeners {
+		l.ch <- nil
+	}
+}
+
+func (w *Wango) handleUnsubscribeError(c *conn, msg []interface{}) {
+	subMessage, err := parseWampMessage(msgUnsubscribeError, msg)
+	if err != nil {
+		println(err)
+	}
+	listeners := w.unsubRequests.getRequests(subMessage.URI)
+	err = errors.New("Unsub error#")
+	if len(subMessage.Args) != 0 {
+		if _err, ok := subMessage.Args[0].(string); ok {
+			err = errors.New("Unsub error#" + _err)
+		}
+	}
+	for _, l := range listeners {
+		l.ch <- err
+	}
+}
+
+func (w *Wango) handleRPCCall(c *conn, msg []interface{}) {
 	rpcMessage, err := parseWampMessage(msgCall, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -188,10 +383,10 @@ func (s *Server) handleRPCCall(c *conn, msg []interface{}) {
 	}
 
 	uri := rpcMessage.URI
-	handler, ok := s.rpcHandlers[uri]
+	handler, ok := w.rpcHandlers[uri]
 	if !ok {
 		var rgx *regexp.Regexp
-		for rgx, handler = range s.rpcRgxHandlers {
+		for rgx, handler = range w.rpcRgxHandlers {
 			if rgx.MatchString(uri) {
 				ok = true
 				break
@@ -216,7 +411,7 @@ func (s *Server) handleRPCCall(c *conn, msg []interface{}) {
 	c.send(response)
 }
 
-func (s *Server) handleSubscribe(c *conn, msg []interface{}) {
+func (w *Wango) handleSubscribe(c *conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -224,15 +419,15 @@ func (s *Server) handleSubscribe(c *conn, msg []interface{}) {
 	}
 
 	_uri := subMessage.URI
-	s.subscribersLocker.Lock()
-	defer s.subscribersLocker.Unlock()
-	for uri, handler := range s.subHandlers {
+	w.subscribersLocker.Lock()
+	defer w.subscribersLocker.Unlock()
+	for uri, handler := range w.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
 			if handler.subHandler(c.id, _uri, subMessage.Args...) {
-				if _, ok := s.subscribers[_uri]; !ok {
-					s.subscribers[_uri] = subscribersMap{}
+				if _, ok := w.subscribers[_uri]; !ok {
+					w.subscribers[_uri] = subscribersMap{}
 				}
-				s.subscribers[_uri][c.id] = subscriberExists
+				w.subscribers[_uri][c.id] = subscriberExists
 				response, _ := createMessage(msgSubscribed, _uri)
 				go c.send(response)
 				return
@@ -246,7 +441,7 @@ func (s *Server) handleSubscribe(c *conn, msg []interface{}) {
 	go c.send(response)
 }
 
-func (s *Server) handleUnSubscribe(c *conn, msg []interface{}) {
+func (w *Wango) handleUnSubscribe(c *conn, msg []interface{}) {
 	unsubMessage, err := parseWampMessage(msgUnsubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -254,9 +449,9 @@ func (s *Server) handleUnSubscribe(c *conn, msg []interface{}) {
 	}
 
 	_uri := unsubMessage.URI
-	s.subscribersLocker.Lock()
-	defer s.subscribersLocker.Unlock()
-	for uri, subscribers := range s.subscribers {
+	w.subscribersLocker.Lock()
+	defer w.subscribersLocker.Unlock()
+	for uri, subscribers := range w.subscribers {
 		if uri == _uri {
 			if _, ok := subscribers[c.id]; ok {
 				delete(subscribers, c.id)
@@ -264,20 +459,20 @@ func (s *Server) handleUnSubscribe(c *conn, msg []interface{}) {
 				go c.send(response)
 				return
 			}
-			response, _ := createMessage(msgUnSubscribeError, _uri, createError(ErrNotSubscribes))
+			response, _ := createMessage(msgUnsubscribeError, _uri, createError(ErrNotSubscribes))
 			go c.send(response)
 			return
 		}
 	}
-	response, _ := createMessage(msgUnSubscribeError, _uri, createError(ErrSubURINotRegistered))
+	response, _ := createMessage(msgUnsubscribeError, _uri, createError(ErrSubURINotRegistered))
 	go c.send(response)
 }
 
-func (s *Server) handleHeartbeat(c *conn, msg []interface{}, data string) {
+func (w *Wango) handleHeartbeat(c *conn, msg []interface{}, data string) {
 	c.send(data)
 }
 
-func (s *Server) handlePublish(c *conn, msg []interface{}) {
+func (w *Wango) handlePublish(c *conn, msg []interface{}) {
 	pubMessage, err := parseWampMessage(msgUnsubscribe, msg)
 	if err != nil {
 		println("Can't parse publish message", err.Error())
@@ -287,26 +482,26 @@ func (s *Server) handlePublish(c *conn, msg []interface{}) {
 	if len(pubMessage.Args) > 0 {
 		event = pubMessage.Args[0]
 	}
-	s.Publish(pubMessage.URI, event)
+	w.Publish(pubMessage.URI, event)
 }
 
-func (s *Server) addConnection(ws *websocket.Conn, extra interface{}) *conn {
+func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
 	cn := new(conn)
 	cn.connection = ws
 	cn.id = newUUIDv4()
 	cn.extra = extra
 	cn.sendChan = make(chan interface{}, sendChanBufferSize)
-	s.connectionsLocker.Lock()
-	defer s.connectionsLocker.Unlock()
-	s.connections[cn.id] = cn
+	w.connectionsLocker.Lock()
+	defer w.connectionsLocker.Unlock()
+	w.connections[cn.id] = cn
 
 	return cn
 }
 
-func (s *Server) getConnection(id string) (*conn, error) {
-	s.connectionsLocker.RLock()
-	defer s.connectionsLocker.RUnlock()
-	cn, ok := s.connections[id]
+func (w *Wango) getConnection(id string) (*conn, error) {
+	w.connectionsLocker.RLock()
+	defer w.connectionsLocker.RUnlock()
+	cn, ok := w.connections[id]
 	if !ok {
 		return nil, errors.New("NOT FOUND")
 	}
@@ -314,13 +509,30 @@ func (s *Server) getConnection(id string) (*conn, error) {
 	return cn, nil
 }
 
-func (s *Server) deleteConnection(id string) {
-	s.connectionsLocker.Lock()
-	defer s.connectionsLocker.Unlock()
-	s.subscribersLocker.Lock()
-	defer s.subscribersLocker.Unlock()
-	delete(s.connections, id)
-	for _, subscribers := range s.subscribers {
+func (w *Wango) deleteConnection(id string) {
+	w.connectionsLocker.Lock()
+	defer w.connectionsLocker.Unlock()
+	w.subscribersLocker.Lock()
+	defer w.subscribersLocker.Unlock()
+	delete(w.connections, id)
+	for _, subscribers := range w.subscribers {
 		delete(subscribers, id)
 	}
+}
+
+func (s subRequestsListeners) addRequest(id, uri string, ch chan error) {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+	if s.listeners[uri] == nil {
+		s.listeners[uri] = []subRequestsListener{}
+	}
+	s.listeners[uri] = append(s.listeners[uri], subRequestsListener{id, ch})
+}
+
+func (s subRequestsListeners) getRequests(uri string) []subRequestsListener {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+	listeners := s.listeners[uri]
+	delete(s.listeners, uri)
+	return listeners
 }

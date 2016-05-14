@@ -220,12 +220,14 @@ func connectAndSub(t *testing.T, path, uri string, args ...interface{}) {
 	ch := make(chan string)
 
 	go func() {
-		var msg string
-		err := websocket.Message.Receive(ws, &msg)
-		if err != nil {
-			t.Fatal("Message receive failed", err)
+		for {
+			var msg string
+			err := websocket.Message.Receive(ws, &msg)
+			if err != nil {
+				break
+			}
+			ch <- msg
 		}
-		ch <- msg
 	}()
 
 	timer := time.NewTimer(time.Second)
@@ -236,6 +238,9 @@ func connectAndSub(t *testing.T, path, uri string, args ...interface{}) {
 			err = json.Unmarshal([]byte(msg), &message)
 			if err != nil {
 				t.Fatal("Can't unmarshal message")
+			}
+			if message[0].(float64) == msgWelcome {
+				continue
 			}
 			if message[1].(string) == uri {
 				if message[0].(float64) == msgSubscribed {
@@ -354,8 +359,8 @@ func connectAndHeartbeat(t *testing.T, path, uri string, args ...interface{}) {
 	}
 }
 
-func createWampServer(path string) *Server {
-	wampServer := NewServer()
+func createWampServer(path string) *Wango {
+	wampServer := New()
 	http.Handle(path, websocket.Handler(func(ws *websocket.Conn) {
 		wampServer.WampHandler(ws, nil)
 	}))

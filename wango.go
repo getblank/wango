@@ -21,7 +21,7 @@ const (
 	msgSubscribed
 	msgSubscribeError
 	msgUnsubscribed
-	msgUnSubscribeError
+	msgUnsubscribeError
 	msgHeartbeat = 20
 )
 

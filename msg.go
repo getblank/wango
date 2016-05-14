@@ -21,7 +21,7 @@ func createHeartbeatTxtEvent(counter int) ([]byte, error) {
 }
 
 func createWelcomeMessage(id string) ([]byte, error) {
-	return createMessage(msgWelcome, id, identity)
+	return createMessage(msgWelcome, id, 1, identity)
 }
 
 func createError(err interface{}) string {
