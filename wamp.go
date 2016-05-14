@@ -336,12 +336,14 @@ func (w *Wango) handleCallResult(c *conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	c.callResultsLocker.Lock()
 	resChan, ok := c.callResults[callResultMessage.URI]
 	c.callResultsLocker.Unlock()
 	if !ok {
 		println("Achtung! No res chan!")
+		return
 	}
 	var res interface{}
 	if len(callResultMessage.Args) > 0 {
@@ -354,6 +356,7 @@ func (w *Wango) handleCallError(c *conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	c.callResultsLocker.Lock()
 	resChan, ok := c.callResults[callResultMessage.URI]
@@ -371,13 +374,29 @@ func (w *Wango) handleCallError(c *conn, msg []interface{}) {
 }
 
 func (w *Wango) handleEvent(c *conn, msg []interface{}) {
-
+	eventMessage, err := parseWampMessage(msgEvent, msg)
+	if err != nil {
+		println(err)
+		return
+	}
+	c.eventHandlersLocker.RLock()
+	handler, ok := c.eventHandlers[eventMessage.URI]
+	c.eventHandlersLocker.RUnlock()
+	if !ok {
+		return
+	}
+	var event interface{}
+	if len(eventMessage.Args) > 0 {
+		event = eventMessage.Args[0]
+	}
+	go handler(eventMessage.URI, event)
 }
 
 func (w *Wango) handleSubscribed(c *conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribed, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	listeners := c.subRequests.getRequests(subMessage.URI)
 	for _, l := range listeners {
@@ -389,6 +408,7 @@ func (w *Wango) handleSubscribeError(c *conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribeError, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	listeners := c.subRequests.getRequests(subMessage.URI)
 	err = errors.New("Sub error#")
@@ -406,6 +426,7 @@ func (w *Wango) handleUnsubscribed(c *conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribed, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	listeners := c.unsubRequests.getRequests(subMessage.URI)
 	for _, l := range listeners {
@@ -417,6 +438,7 @@ func (w *Wango) handleUnsubscribeError(c *conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribeError, msg)
 	if err != nil {
 		println(err)
+		return
 	}
 	listeners := c.unsubRequests.getRequests(subMessage.URI)
 	err = errors.New("Unsub error#")
@@ -450,15 +472,18 @@ func (w *Wango) handleRPCCall(c *conn, msg []interface{}) {
 	}
 
 	if ok {
-		res, err := handler(c.id, uri, rpcMessage.Args...)
-		if err != nil {
-			response, _ := createMessage(msgCallError, rpcMessage.ID, createError(err))
-			// TODO: error handling
+		// gouroutine to prevent block message reading
+		go func() {
+			res, err := handler(c.id, uri, rpcMessage.Args...)
+			if err != nil {
+				response, _ := createMessage(msgCallError, rpcMessage.ID, createError(err))
+				// TODO: error handling
+				c.send(response)
+				return
+			}
+			response, _ := createMessage(msgCallResult, rpcMessage.ID, res)
 			c.send(response)
-			return
-		}
-		response, _ := createMessage(msgCallResult, rpcMessage.ID, res)
-		c.send(response)
+		}()
 		return
 	}
 
@@ -537,7 +562,7 @@ func (w *Wango) handlePublish(c *conn, msg []interface{}) {
 	if len(pubMessage.Args) > 0 {
 		event = pubMessage.Args[0]
 	}
-	w.Publish(pubMessage.URI, event)
+	go w.Publish(pubMessage.URI, event)
 }
 
 func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
@@ -546,6 +571,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
 	cn.id = newUUIDv4()
 	cn.extra = extra
 	cn.sendChan = make(chan interface{}, sendChanBufferSize)
+	cn.eventHandlers = map[string]EventHandler{}
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn

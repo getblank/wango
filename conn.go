@@ -15,7 +15,13 @@ type conn struct {
 	unsubRequests     subRequestsListeners
 	callResults       map[string]chan *callResult
 	callResultsLocker sync.Mutex
+    eventHandlers map[string]EventHandler
+	eventHandlersLocker sync.RWMutex
 }
+
+// EventHandler is an interface for handlers to published events. The uri
+// is the URI of the event and event is the event centents.
+type EventHandler func(uri string, event interface{})
 
 func (c *conn) send(msg interface{}) {
 	c.sendChan <- msg

@@ -51,7 +51,7 @@ func parseWampMessage(typ int, msg []interface{}) (*wampMsg, error) {
 			message.Args = msg[2:]
 		}
 
-	case msgSubscribe, msgUnsubscribe, msgPublish, msgSubscribed, msgSubscribeError, msgUnsubscribed, msgUnsubscribeError:
+	case msgSubscribe, msgUnsubscribe, msgPublish, msgSubscribed, msgSubscribeError, msgUnsubscribed, msgUnsubscribeError, msgEvent:
 		uri, ok := msg[1].(string)
 		if !ok {
 			return nil, errors.New("invalid wamp message. uri is not a string")
