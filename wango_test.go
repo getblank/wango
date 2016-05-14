@@ -355,7 +355,7 @@ func connectAndHeartbeat(t *testing.T, path, uri string, args ...interface{}) {
 }
 
 func createWampServer(path string) *Server {
-	wampServer := New()
+	wampServer := NewServer()
 	http.Handle(path, websocket.Handler(func(ws *websocket.Conn) {
 		wampServer.WampHandler(ws, nil)
 	}))

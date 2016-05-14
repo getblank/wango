@@ -39,7 +39,7 @@ type subHandler struct {
 type subscribersMap map[string]bool
 
 // New creates new WS struct and returns pointer to it
-func New() *Server {
+func NewServer() *Server {
 	server := new(Server)
 	server.connections = map[string]*conn{}
 	server.rpcHandlers = map[string]RPCHandler{}
