@@ -44,6 +44,28 @@ type subRequestsListeners struct {
 	listeners map[string][]subRequestsListener
 }
 
+// Connect connects to server with provided URI and origin
+func Connect(url, origin string) (*Wango, error) {
+	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
+		url = "ws://" + url
+	}
+	ws, err := websocket.Dial(url, "wamp", origin)
+	if err != nil {
+		return nil, errors.Wrap(err, "Can't connect to "+url)
+	}
+	w := New()
+	c := w.addConnection(ws, nil)
+
+	err = c.receiveWelcome()
+	if err != nil {
+		return nil, err
+	}
+	go c.sender()
+	go w.receive(c)
+
+	return w, nil
+}
+
 // New creates new Wango and returns pointer to it
 func New() *Wango {
 	w := new(Wango)
@@ -85,28 +107,6 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 
 	res := <-ch
 	return res.result, res.err
-}
-
-// Dial connects to server with provided URI and origin
-func (w *Wango) Dial(url, origin string) error {
-	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
-		url = "ws://" + url
-	}
-	ws, err := websocket.Dial(url, "wamp", origin)
-	if err != nil {
-		return errors.Wrap(err, "Can't connect to "+url)
-	}
-	c := w.addConnection(ws, nil)
-	defer w.deleteConnection(c.id)
-
-	err = c.receiveWelcome()
-	if err != nil {
-		return err
-	}
-	go c.sender()
-	w.receive(c)
-
-	return nil
 }
 
 // Publish used for publish event
@@ -339,17 +339,17 @@ func (w *Wango) handleCallResult(c *conn, msg []interface{}) {
 		return
 	}
 	c.callResultsLocker.Lock()
-	resChan, ok := c.callResults[callResultMessage.URI]
+	resChan, ok := c.callResults[callResultMessage.ID]
 	c.callResultsLocker.Unlock()
 	if !ok {
 		println("Achtung! No res chan!")
 		return
 	}
-	var res interface{}
+	res := new(callResult)
 	if len(callResultMessage.Args) > 0 {
-		res = callResultMessage.Args[0]
+		res.result = callResultMessage.Args[0]
 	}
-	resChan <- &callResult{res, nil}
+	resChan <- res
 }
 
 func (w *Wango) handleCallError(c *conn, msg []interface{}) {
@@ -359,12 +359,13 @@ func (w *Wango) handleCallError(c *conn, msg []interface{}) {
 		return
 	}
 	c.callResultsLocker.Lock()
-	resChan, ok := c.callResults[callResultMessage.URI]
+	resChan, ok := c.callResults[callResultMessage.ID]
 	c.callResultsLocker.Unlock()
 	if !ok {
 		println("Achtung! No res chan!")
 	}
-	err = errors.New("RPC error#")
+	res := new(callResult)
+	res.err = errors.New("RPC error#")
 	if len(callResultMessage.Args) > 0 {
 		if _err := callResultMessage.Args[0].(string); ok {
 			err = errors.New("RPC error#" + _err)
@@ -572,6 +573,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
 	cn.extra = extra
 	cn.sendChan = make(chan interface{}, sendChanBufferSize)
 	cn.eventHandlers = map[string]EventHandler{}
+	cn.callResults = map[string]chan *callResult{}
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn

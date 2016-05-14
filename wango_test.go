@@ -156,6 +156,44 @@ func TestSubHandling(t *testing.T) {
 	}
 }
 
+func TestClientConnecting(t *testing.T) {
+	path := "/wamp-client-connecting"
+	server := createWampServer(path)
+	server.RegisterRPCHandler("wango.test", testRPCHandlerForClient)
+	server.RegisterRPCHandler("wango.test-error", testRPCHandlerWithErrorReturn)
+	client, err := Connect(url+path, origin)
+	if err != nil {
+		t.Fatal("Can't connect to server", err.Error())
+	}
+	res, err := client.Call("wango.test", "call")
+	if err != nil {
+		t.Fatal("Can't call")
+	}
+	expected := "test-call"
+	if res == nil {
+		t.Fatal("Res is nil")
+	}
+	if res.(string) != expected {
+		t.Fatal("RPC failed", res, "!=", expected)
+	}
+
+	_, err = client.Call("wango.test-error")
+	if err == nil {
+		t.Fatal("Can't call")
+	}
+
+}
+
+func testRPCHandlerForClient(connID string, uri string, args ...interface{}) (interface{}, error) {
+	res := "test-"
+	if len(args) > 0 {
+		if _arg, ok := args[0].(string); ok {
+			res += _arg
+		}
+	}
+	return res, nil
+}
+
 func testRPCHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
 	return "test-" + uri, nil
 }
@@ -182,10 +220,10 @@ func connectForOneSecond(path string) {
 
 func connectAndRPC(path, uri string, args ...interface{}) (interface{}, error) {
 	ws, err := websocket.Dial(url+path, "", origin)
-	defer ws.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer ws.Close()
 	msgId := newUUIDv4()
 	message, err := createMessage(msgCall, msgId, uri)
 	websocket.Message.Send(ws, message)
