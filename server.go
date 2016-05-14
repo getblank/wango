@@ -10,7 +10,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Server is a main struct – WAMP server
+// Server represents a WAMP server that handles RPC and pub/sub.
 type Server struct {
 	connections       map[string]*conn
 	connectionsLocker sync.RWMutex
@@ -202,17 +202,17 @@ func (s *Server) handleRPCCall(c *conn, msg []interface{}) {
 	if ok {
 		res, err := handler(c.id, uri, rpcMessage.Args...)
 		if err != nil {
-			response, _ := createMessage(msgCallError, rpcMessage.CallID, createError(err))
+			response, _ := createMessage(msgCallError, rpcMessage.ID, createError(err))
 			// TODO: error handling
 			c.send(response)
 			return
 		}
-		response, _ := createMessage(msgCallResult, rpcMessage.CallID, res)
+		response, _ := createMessage(msgCallResult, rpcMessage.ID, res)
 		c.send(response)
 		return
 	}
 
-	response, _ := createMessage(msgCallError, rpcMessage.CallID, createError(ErrRPCNotRegistered))
+	response, _ := createMessage(msgCallError, rpcMessage.ID, createError(ErrRPCNotRegistered))
 	c.send(response)
 }
 

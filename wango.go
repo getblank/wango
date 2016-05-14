@@ -74,12 +74,6 @@ var (
 	ErrNotSubscribes            = errors.New("Not subscribed")
 )
 
-type wampMsg struct {
-	CallID string
-	URI    string
-	Args   []interface{}
-}
-
 func newUUIDv4() string {
 	u := [16]byte{}
 	rand.Read(u[:16])

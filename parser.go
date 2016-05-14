@@ -45,7 +45,7 @@ func parseWampMessage(typ int, msg []interface{}) (*wampMsg, error) {
 		if !ok {
 			return nil, errors.New("invalid wamp message. uri is not a string")
 		}
-		message.CallID = callID
+		message.ID = callID
 		message.URI = uri
 		if len(msg) > 3 {
 			message.Args = msg[2:]

@@ -2,6 +2,12 @@ package wango
 
 import "encoding/json"
 
+type wampMsg struct {
+	ID   string
+	URI  string
+	Args []interface{}
+}
+
 func createMessage(args ...interface{}) ([]byte, error) {
 	return json.Marshal(args)
 }
