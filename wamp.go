@@ -191,6 +191,17 @@ func (w *Wango) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandle
 	return nil
 }
 
+func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
+	msg, _ := createMessage(msgEvent, uri, event)
+	for _, id := range connIDs {
+		c, err := w.getConnection(id)
+		if err != nil {
+			return
+		}
+		c.send(msg)
+	}
+}
+
 // Subscribe sends subscribe request for uri provided
 func (w *Wango) Subscribe(uri string, fn EventHandler, id ...string) error {
 	if uri == "" {
