@@ -201,8 +201,8 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 		return nil, nil
 	}
 	server.RegisterRPCHandler("wango.test", testRPCHandlerWithPub)
-	server.RegisterSubHandler(subUri, func(connID string, uri string, args ...interface{}) bool {
-		return true
+	server.RegisterSubHandler(subUri, func(connID string, uri string, args ...interface{}) (interface{}, error) {
+		return nil, nil
 	}, nil)
 
 	url := "localhost:1234"
@@ -304,11 +304,11 @@ func testRPCHandlerWithErrorReturn(connID string, uri string, args ...interface{
 	return nil, errors.New("RPC error")
 }
 
-func testSubHandler(connID string, uri string, args ...interface{}) bool {
+func testSubHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
 	if strings.Contains(uri, "error") {
-		return false
+		return nil, errors.New("403")
 	}
-	return true
+	return nil, nil
 }
 
 func connectForOneSecond(path string) {

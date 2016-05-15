@@ -27,7 +27,7 @@ type Wango struct {
 type RPCHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
 
 // SubHandler describes func for handling RPC requests
-type SubHandler func(connID string, uri string, args ...interface{}) bool
+type SubHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
 
 // PubHandler describes func for handling publish event before sending to subscribers
 type PubHandler func(uri string, event interface{}, extra interface{}) (bool, interface{})
@@ -191,6 +191,7 @@ func (w *Wango) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandle
 	return nil
 }
 
+// SendEvent sends event for provided uri directly to receivers in slice connIDs
 func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
 	msg, _ := createMessage(msgEvent, uri, event)
 	for _, id := range connIDs {
@@ -526,16 +527,17 @@ func (w *Wango) handleSubscribe(c *conn, msg []interface{}) {
 	defer w.subscribersLocker.Unlock()
 	for uri, handler := range w.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
-			if handler.subHandler(c.id, _uri, subMessage.Args...) {
-				if _, ok := w.subscribers[_uri]; !ok {
-					w.subscribers[_uri] = subscribersMap{}
-				}
-				w.subscribers[_uri][c.id] = subscriberExists
-				response, _ := createMessage(msgSubscribed, _uri)
+			data, err := handler.subHandler(c.id, _uri, subMessage.Args...)
+			if err != nil {
+				response, _ := createMessage(msgSubscribeError, _uri, createError(err))
 				go c.send(response)
 				return
 			}
-			response, _ := createMessage(msgSubscribeError, _uri, createError(ErrForbidden))
+			if _, ok := w.subscribers[_uri]; !ok {
+				w.subscribers[_uri] = subscribersMap{}
+			}
+			w.subscribers[_uri][c.id] = subscriberExists
+			response, _ := createMessage(msgSubscribed, _uri, data)
 			go c.send(response)
 			return
 		}
