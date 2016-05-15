@@ -7,7 +7,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-func (c *conn) receiveWelcome() error {
+func (c *Conn) receiveWelcome() error {
 	var data string
 	err := websocket.Message.Receive(c.connection, &data)
 	if err != nil {

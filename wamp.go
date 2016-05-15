@@ -12,7 +12,7 @@ import (
 
 // Wango represents a WAMP server that handles RPC and pub/sub.
 type Wango struct {
-	connections       map[string]*conn
+	connections       map[string]*Conn
 	connectionsLocker sync.RWMutex
 	rpcHandlers       map[string]RPCHandler
 	rpcRgxHandlers    map[*regexp.Regexp]RPCHandler
@@ -69,7 +69,7 @@ func Connect(url, origin string) (*Wango, error) {
 // New creates new Wango and returns pointer to it
 func New() *Wango {
 	w := new(Wango)
-	w.connections = map[string]*conn{}
+	w.connections = map[string]*Conn{}
 	w.rpcHandlers = map[string]RPCHandler{}
 	w.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
 	w.subHandlers = map[string]subHandler{}
@@ -83,7 +83,7 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 		return nil, errors.New("Not connected")
 	}
 	w.connectionsLocker.RLock()
-	var c *conn
+	var c *Conn
 	for _, _c := range w.connections {
 		c = _c
 		break
@@ -107,6 +107,10 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 
 	res := <-ch
 	return res.result, res.err
+}
+
+func (w *Wango) GetConnection(id string) (*Conn, error) {
+	return w.getConnection(id)
 }
 
 // Publish used for publish event
@@ -212,7 +216,7 @@ func (w *Wango) Subscribe(uri string, fn EventHandler, id ...string) error {
 		return errors.New("No active connections")
 	}
 	w.connectionsLocker.RLock()
-	var c *conn
+	var c *Conn
 	if id != nil {
 		_c, ok := w.connections[id[0]]
 		if !ok {
@@ -253,7 +257,7 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 	}
 
 	w.connectionsLocker.RLock()
-	var c *conn
+	var c *Conn
 	if id != nil {
 		_c, ok := w.connections[id[0]]
 		if !ok {
@@ -297,7 +301,7 @@ func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 	w.receive(c)
 }
 
-func (w *Wango) receive(c *conn) {
+func (w *Wango) receive(c *Conn) {
 	defer c.connection.Close()
 	var data string
 	for {
@@ -355,7 +359,7 @@ func (w *Wango) receive(c *conn) {
 	}
 }
 
-func (w *Wango) handleCallResult(c *conn, msg []interface{}) {
+func (w *Wango) handleCallResult(c *Conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
 		println(err)
@@ -375,7 +379,7 @@ func (w *Wango) handleCallResult(c *conn, msg []interface{}) {
 	resChan <- res
 }
 
-func (w *Wango) handleCallError(c *conn, msg []interface{}) {
+func (w *Wango) handleCallError(c *Conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
 		println(err)
@@ -397,7 +401,7 @@ func (w *Wango) handleCallError(c *conn, msg []interface{}) {
 	resChan <- &callResult{nil, err}
 }
 
-func (w *Wango) handleEvent(c *conn, msg []interface{}) {
+func (w *Wango) handleEvent(c *Conn, msg []interface{}) {
 	eventMessage, err := parseWampMessage(msgEvent, msg)
 	if err != nil {
 		println(err)
@@ -416,7 +420,7 @@ func (w *Wango) handleEvent(c *conn, msg []interface{}) {
 	go handler(eventMessage.URI, event)
 }
 
-func (w *Wango) handleSubscribed(c *conn, msg []interface{}) {
+func (w *Wango) handleSubscribed(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribed, msg)
 	if err != nil {
 		println(err)
@@ -428,7 +432,7 @@ func (w *Wango) handleSubscribed(c *conn, msg []interface{}) {
 	}
 }
 
-func (w *Wango) handleSubscribeError(c *conn, msg []interface{}) {
+func (w *Wango) handleSubscribeError(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribeError, msg)
 	if err != nil {
 		println(err)
@@ -446,7 +450,7 @@ func (w *Wango) handleSubscribeError(c *conn, msg []interface{}) {
 	}
 }
 
-func (w *Wango) handleUnsubscribed(c *conn, msg []interface{}) {
+func (w *Wango) handleUnsubscribed(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribed, msg)
 	if err != nil {
 		println(err)
@@ -458,7 +462,7 @@ func (w *Wango) handleUnsubscribed(c *conn, msg []interface{}) {
 	}
 }
 
-func (w *Wango) handleUnsubscribeError(c *conn, msg []interface{}) {
+func (w *Wango) handleUnsubscribeError(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribeError, msg)
 	if err != nil {
 		println(err)
@@ -476,7 +480,7 @@ func (w *Wango) handleUnsubscribeError(c *conn, msg []interface{}) {
 	}
 }
 
-func (w *Wango) handleRPCCall(c *conn, msg []interface{}) {
+func (w *Wango) handleRPCCall(c *Conn, msg []interface{}) {
 	rpcMessage, err := parseWampMessage(msgCall, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -515,7 +519,7 @@ func (w *Wango) handleRPCCall(c *conn, msg []interface{}) {
 	c.send(response)
 }
 
-func (w *Wango) handleSubscribe(c *conn, msg []interface{}) {
+func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -546,7 +550,7 @@ func (w *Wango) handleSubscribe(c *conn, msg []interface{}) {
 	go c.send(response)
 }
 
-func (w *Wango) handleUnSubscribe(c *conn, msg []interface{}) {
+func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 	unsubMessage, err := parseWampMessage(msgUnsubscribe, msg)
 	if err != nil {
 		println("Can't parse rpc message", err.Error())
@@ -573,11 +577,11 @@ func (w *Wango) handleUnSubscribe(c *conn, msg []interface{}) {
 	go c.send(response)
 }
 
-func (w *Wango) handleHeartbeat(c *conn, msg []interface{}, data string) {
+func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data string) {
 	c.send(data)
 }
 
-func (w *Wango) handlePublish(c *conn, msg []interface{}) {
+func (w *Wango) handlePublish(c *Conn, msg []interface{}) {
 	pubMessage, err := parseWampMessage(msgPublish, msg)
 	if err != nil {
 		println("Can't parse publish message", err.Error())
@@ -590,8 +594,8 @@ func (w *Wango) handlePublish(c *conn, msg []interface{}) {
 	go w.Publish(pubMessage.URI, event)
 }
 
-func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
-	cn := new(conn)
+func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
+	cn := new(Conn)
 	cn.connection = ws
 	cn.id = newUUIDv4()
 	cn.extra = extra
@@ -607,7 +611,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *conn {
 	return cn
 }
 
-func (w *Wango) getConnection(id string) (*conn, error) {
+func (w *Wango) getConnection(id string) (*Conn, error) {
 	w.connectionsLocker.RLock()
 	defer w.connectionsLocker.RUnlock()
 	cn, ok := w.connections[id]

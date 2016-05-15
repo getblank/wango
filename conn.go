@@ -6,16 +6,17 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-type conn struct {
-	id                string
-	connection        *websocket.Conn
-	extra             interface{}
-	sendChan          chan interface{}
-	subRequests       subRequestsListeners
-	unsubRequests     subRequestsListeners
-	callResults       map[string]chan *callResult
-	callResultsLocker sync.Mutex
-    eventHandlers map[string]EventHandler
+// Conn represents a websocket connection
+type Conn struct {
+	id                  string
+	connection          *websocket.Conn
+	extra               interface{}
+	sendChan            chan interface{}
+	subRequests         subRequestsListeners
+	unsubRequests       subRequestsListeners
+	callResults         map[string]chan *callResult
+	callResultsLocker   sync.Mutex
+	eventHandlers       map[string]EventHandler
 	eventHandlersLocker sync.RWMutex
 }
 
@@ -23,11 +24,16 @@ type conn struct {
 // is the URI of the event and event is the event centents.
 type EventHandler func(uri string, event interface{})
 
-func (c *conn) send(msg interface{}) {
+// RemoteAddr returns remote address
+func (c *Conn) RemoteAddr() string {
+	return c.connection.Request().RemoteAddr
+}
+
+func (c *Conn) send(msg interface{}) {
 	c.sendChan <- msg
 }
 
-func (c *conn) sender() {
+func (c *Conn) sender() {
 	for msg := range c.sendChan {
 		err := websocket.Message.Send(c.connection, msg)
 		if err != nil {
