@@ -161,7 +161,7 @@ func (w *Wango) Publish(uri string, event interface{}) {
 }
 
 // RegisterRPCHandler registers RPC handler function for provided URI
-func (w *Wango) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
+func (w *Wango) RegisterRPCHandler(_uri interface{}, fn func(c *Conn, uri string, args ...interface{}) (interface{}, error)) error {
 	switch _uri.(type) {
 	case string:
 		uri := _uri.(string)
@@ -183,7 +183,7 @@ func (w *Wango) RegisterRPCHandler(_uri interface{}, fn RPCHandler) error {
 }
 
 // RegisterSubHandler registers subscription handler function for provided URI
-func (w *Wango) RegisterSubHandler(uri string, fnSub SubHandler, fnPub PubHandler) error {
+func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnPub func(uri string, event interface{}, extra interface{}) (bool, interface{})) error {
 	if _, ok := w.subHandlers[uri]; ok {
 		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
 	}
