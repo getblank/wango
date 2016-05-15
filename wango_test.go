@@ -194,14 +194,14 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 	path := "/wamp-client-sub"
 	subUri := "wango.sub"
 	server := createWampServer(path)
-	testRPCHandlerWithPub := func(connID string, uri string, args ...interface{}) (interface{}, error) {
+	testRPCHandlerWithPub := func(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 		pubUri := args[0].(string)
 		pubData := args[1]
 		server.Publish(pubUri, pubData)
 		return nil, nil
 	}
 	server.RegisterRPCHandler("wango.test", testRPCHandlerWithPub)
-	server.RegisterSubHandler(subUri, func(connID string, uri string, args ...interface{}) (interface{}, error) {
+	server.RegisterSubHandler(subUri, func(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 		return nil, nil
 	}, nil)
 
@@ -286,7 +286,7 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 	}
 }
 
-func testRPCHandlerForClient(connID string, uri string, args ...interface{}) (interface{}, error) {
+func testRPCHandlerForClient(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	res := "test-"
 	if len(args) > 0 {
 		if _arg, ok := args[0].(string); ok {
@@ -296,15 +296,15 @@ func testRPCHandlerForClient(connID string, uri string, args ...interface{}) (in
 	return res, nil
 }
 
-func testRPCHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
+func testRPCHandler(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	return "test-" + uri, nil
 }
 
-func testRPCHandlerWithErrorReturn(connID string, uri string, args ...interface{}) (interface{}, error) {
+func testRPCHandlerWithErrorReturn(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	return nil, errors.New("RPC error")
 }
 
-func testSubHandler(connID string, uri string, args ...interface{}) (interface{}, error) {
+func testSubHandler(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	if strings.Contains(uri, "error") {
 		return nil, errors.New("403")
 	}

@@ -24,6 +24,11 @@ type Conn struct {
 // is the URI of the event and event is the event centents.
 type EventHandler func(uri string, event interface{})
 
+// ID returns connection ID
+func (c *Conn) ID() string {
+	return c.id
+}
+
 // RemoteAddr returns remote address
 func (c *Conn) RemoteAddr() string {
 	return c.connection.Request().RemoteAddr

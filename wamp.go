@@ -24,10 +24,10 @@ type Wango struct {
 }
 
 // RPCHandler describes func for handling RPC requests
-type RPCHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
+type RPCHandler func(c *Conn, uri string, args ...interface{}) (interface{}, error)
 
 // SubHandler describes func for handling RPC requests
-type SubHandler func(connID string, uri string, args ...interface{}) (interface{}, error)
+type SubHandler func(c *Conn, uri string, args ...interface{}) (interface{}, error)
 
 // PubHandler describes func for handling publish event before sending to subscribers
 type PubHandler func(uri string, event interface{}, extra interface{}) (bool, interface{})
@@ -502,7 +502,7 @@ func (w *Wango) handleRPCCall(c *Conn, msg []interface{}) {
 	if ok {
 		// gouroutine to prevent block message reading
 		go func() {
-			res, err := handler(c.id, uri, rpcMessage.Args...)
+			res, err := handler(c, uri, rpcMessage.Args...)
 			if err != nil {
 				response, _ := createMessage(msgCallError, rpcMessage.ID, createError(err))
 				// TODO: error handling
@@ -531,7 +531,7 @@ func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 	defer w.subscribersLocker.Unlock()
 	for uri, handler := range w.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
-			data, err := handler.subHandler(c.id, _uri, subMessage.Args...)
+			data, err := handler.subHandler(c, _uri, subMessage.Args...)
 			if err != nil {
 				response, _ := createMessage(msgSubscribeError, _uri, createError(err))
 				go c.send(response)
