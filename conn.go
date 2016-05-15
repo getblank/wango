@@ -11,6 +11,7 @@ type Conn struct {
 	id                  string
 	connection          *websocket.Conn
 	extra               interface{}
+	extraLocker         sync.RWMutex
 	sendChan            chan interface{}
 	subRequests         subRequestsListeners
 	unsubRequests       subRequestsListeners
@@ -24,6 +25,13 @@ type Conn struct {
 // is the URI of the event and event is the event centents.
 type EventHandler func(uri string, event interface{})
 
+func (c *Conn) GetExtra() interface{} {
+	c.extraLocker.RLock()
+	extra := c.extra
+	c.extraLocker.RUnlock()
+	return extra
+}
+
 // ID returns connection ID
 func (c *Conn) ID() string {
 	return c.id
@@ -32,6 +40,12 @@ func (c *Conn) ID() string {
 // RemoteAddr returns remote address
 func (c *Conn) RemoteAddr() string {
 	return c.connection.Request().RemoteAddr
+}
+
+func (c *Conn) SetExtra(extra interface{}) {
+	c.extraLocker.Lock()
+	c.extra = extra
+	c.extraLocker.Unlock()
 }
 
 func (c *Conn) send(msg interface{}) {

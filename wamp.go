@@ -19,8 +19,8 @@ type Wango struct {
 	subHandlers       map[string]subHandler
 	subscribers       map[string]subscribersMap
 	subscribersLocker sync.RWMutex
-	openCB            func(string)
-	closeCB           func(string)
+	openCB            func(*Conn)
+	closeCB           func(*Conn)
 }
 
 // RPCHandler describes func for handling RPC requests
@@ -111,6 +111,14 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 
 func (w *Wango) GetConnection(id string) (*Conn, error) {
 	return w.getConnection(id)
+}
+
+func (w *Wango) SetSessionOpenCallback(cb func(*Conn)) {
+	w.openCB = cb
+}
+
+func (w *Wango) SetSessionCloseCallback(cb func(*Conn)) {
+	w.closeCB = cb
 }
 
 // Publish used for publish event
@@ -292,7 +300,10 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 // If extra data provided, it will kept in connection and will pass to rpc/pub/sub handlers
 func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 	c := w.addConnection(ws, extra)
-	defer w.deleteConnection(c.id)
+	defer w.deleteConnection(c)
+	if w.openCB != nil {
+		w.openCB(c)
+	}
 
 	go c.sender()
 
@@ -622,13 +633,16 @@ func (w *Wango) getConnection(id string) (*Conn, error) {
 	return cn, nil
 }
 
-func (w *Wango) deleteConnection(id string) {
+func (w *Wango) deleteConnection(c *Conn) {
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.subscribersLocker.Lock()
 	defer w.subscribersLocker.Unlock()
-	delete(w.connections, id)
+	delete(w.connections, c.id)
 	for _, subscribers := range w.subscribers {
-		delete(subscribers, id)
+		delete(subscribers, c.id)
+	}
+	if w.closeCB != nil {
+		w.closeCB(c)
 	}
 }
