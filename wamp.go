@@ -109,6 +109,14 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 	return res.result, res.err
 }
 
+func (w *Wango) Disconnect() {
+	w.connectionsLocker.RLock()
+	for _, c := range w.connections {
+		c.breakChan <- struct{}{}
+	}
+	w.connectionsLocker.RUnlock()
+}
+
 func (w *Wango) GetConnection(id string) (*Conn, error) {
 	return w.getConnection(id)
 }
@@ -314,58 +322,71 @@ func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 
 func (w *Wango) receive(c *Conn) {
 	defer c.connection.Close()
-	var data string
-	for {
-		err := websocket.Message.Receive(c.connection, &data)
-		if err != nil {
-			if err != io.EOF {
-				// Error receiving message
+	dataChan := make(chan string)
+	go func() {
+		var data string
+		for {
+			err := websocket.Message.Receive(c.connection, &data)
+			if err != nil {
+				if err != io.EOF {
+					// Error receiving message
+				}
+				c.breakChan <- struct{}{}
+				break
 			}
-			break
+			dataChan <- data
 		}
-		msgType, msg, err := parseMessage(data)
-		if err != nil {
-			// error parsing!!!
-			println("Error:", err.Error())
-		}
-		switch msgType {
-		case msgPrefix:
-		// not implemented
-		case msgCall:
-			w.handleRPCCall(c, msg)
+	}()
+MessageLoop:
+	for {
+		select {
+		case <-c.breakChan:
+			break MessageLoop
+		case data := <-dataChan:
+			msgType, msg, err := parseMessage(data)
+			if err != nil {
+				// error parsing!!!
+				println("Error:", err.Error())
+			}
+			switch msgType {
+			case msgPrefix:
+			// not implemented
+			case msgCall:
+				w.handleRPCCall(c, msg)
 
-		case msgCallResult:
-			w.handleCallResult(c, msg)
+			case msgCallResult:
+				w.handleCallResult(c, msg)
 
-		case msgCallError:
-			w.handleCallError(c, msg)
+			case msgCallError:
+				w.handleCallError(c, msg)
 
-		case msgSubscribe:
-			w.handleSubscribe(c, msg)
+			case msgSubscribe:
+				w.handleSubscribe(c, msg)
 
-		case msgUnsubscribe:
-			w.handleUnSubscribe(c, msg)
+			case msgUnsubscribe:
+				w.handleUnSubscribe(c, msg)
 
-		case msgPublish:
-			w.handlePublish(c, msg)
+			case msgPublish:
+				w.handlePublish(c, msg)
 
-		case msgEvent:
-			w.handleEvent(c, msg)
+			case msgEvent:
+				w.handleEvent(c, msg)
 
-		case msgSubscribed:
-			w.handleSubscribed(c, msg)
+			case msgSubscribed:
+				w.handleSubscribed(c, msg)
 
-		case msgSubscribeError:
-			w.handleSubscribeError(c, msg)
+			case msgSubscribeError:
+				w.handleSubscribeError(c, msg)
 
-		case msgUnsubscribed:
-			w.handleUnsubscribed(c, msg)
+			case msgUnsubscribed:
+				w.handleUnsubscribed(c, msg)
 
-		case msgUnsubscribeError:
-			w.handleUnsubscribeError(c, msg)
+			case msgUnsubscribeError:
+				w.handleUnsubscribeError(c, msg)
 
-		case msgHeartbeat:
-			w.handleHeartbeat(c, msg, data)
+			case msgHeartbeat:
+				w.handleHeartbeat(c, msg, data)
+			}
 		}
 	}
 }
@@ -615,6 +636,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.callResults = map[string]chan *callResult{}
 	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
 	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
+	cn.breakChan = make(chan struct{})
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn
@@ -635,13 +657,13 @@ func (w *Wango) getConnection(id string) (*Conn, error) {
 
 func (w *Wango) deleteConnection(c *Conn) {
 	w.connectionsLocker.Lock()
-	defer w.connectionsLocker.Unlock()
-	w.subscribersLocker.Lock()
-	defer w.subscribersLocker.Unlock()
 	delete(w.connections, c.id)
+	w.connectionsLocker.Unlock()
+	w.subscribersLocker.Lock()
 	for _, subscribers := range w.subscribers {
 		delete(subscribers, c.id)
 	}
+	w.subscribersLocker.Unlock()
 	if w.closeCB != nil {
 		w.closeCB(c)
 	}

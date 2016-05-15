@@ -286,6 +286,43 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 	}
 }
 
+func TestSessionOpenSessionCloseHandlers(t *testing.T) {
+	path := "/wamp-client-handlers"
+	server := createWampServer(path)
+	var totalClients int
+	sessionOpenCallback := func(c *Conn) {
+		totalClients++
+	}
+	sessionCloseCallback := func(c *Conn) {
+		totalClients--
+	}
+	server.SetSessionOpenCallback(sessionOpenCallback)
+	server.SetSessionCloseCallback(sessionCloseCallback)
+
+	url := "localhost:1234"
+	maxConnects := 20
+	clients := make([]*Wango, maxConnects)
+	for i := 0; i < maxConnects; i++ {
+		client, err := Connect(url+path, origin)
+		if err != nil {
+			t.Fatal("Can't connect to server", err.Error())
+		}
+
+		if totalClients != i+1 {
+			t.Fatal("Open handler is not working")
+		}
+		clients[i] = client
+	}
+	for i := 0; i < maxConnects; i++ {
+		client := clients[i]
+		client.Disconnect()
+		time.Sleep(time.Millisecond)
+		if totalClients != maxConnects-i-1 {
+			t.Fatal("Close handler is not working", totalClients)
+		}
+	}
+}
+
 func testRPCHandlerForClient(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	res := "test-"
 	if len(args) > 0 {

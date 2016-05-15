@@ -13,6 +13,7 @@ type Conn struct {
 	extra               interface{}
 	extraLocker         sync.RWMutex
 	sendChan            chan interface{}
+	breakChan           chan struct{}
 	subRequests         subRequestsListeners
 	unsubRequests       subRequestsListeners
 	callResults         map[string]chan *callResult
@@ -24,6 +25,10 @@ type Conn struct {
 // EventHandler is an interface for handlers to published events. The uri
 // is the URI of the event and event is the event centents.
 type EventHandler func(uri string, event interface{})
+
+func (c *Conn) Close() {
+	c.breakChan <- struct{}{}
+}
 
 func (c *Conn) GetExtra() interface{} {
 	c.extraLocker.RLock()
