@@ -6,3 +6,4 @@ go:
 install:
   - go get golang.org/x/net/websocket
   - go get github.com/pkg/errors
+  - github.com/getblank/uuid
