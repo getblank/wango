@@ -20,6 +20,7 @@ type Conn struct {
 	callResultsLocker   sync.Mutex
 	eventHandlers       map[string]EventHandler
 	eventHandlersLocker sync.RWMutex
+	connected           bool
 }
 
 // EventHandler is an interface for handlers to published events. The uri
@@ -28,6 +29,13 @@ type EventHandler func(uri string, event interface{})
 
 func (c *Conn) Close() {
 	c.breakChan <- struct{}{}
+}
+
+func (c *Conn) Connected() bool {
+	c.extraLocker.RLock()
+	defer c.extraLocker.RUnlock()
+	connected := c.connected
+	return connected
 }
 
 func (c *Conn) GetExtra() interface{} {

@@ -109,6 +109,7 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 	return res.result, res.err
 }
 
+// Disconnect used to disconnect all clients in server mode, or to disconnect from server in client mode
 func (w *Wango) Disconnect() {
 	w.connectionsLocker.RLock()
 	for _, c := range w.connections {
@@ -117,14 +118,19 @@ func (w *Wango) Disconnect() {
 	w.connectionsLocker.RUnlock()
 }
 
+// GetConnection returns connection for connID provided.
 func (w *Wango) GetConnection(id string) (*Conn, error) {
 	return w.getConnection(id)
 }
 
+// SetSessionOpenCallback sets callback that will called when new connection will established.
+// Callback passes connection struct as only argument.
 func (w *Wango) SetSessionOpenCallback(cb func(*Conn)) {
 	w.openCB = cb
 }
 
+// SetSessionCloseCallback sets callback that will called when connection will closed
+// Callback passes connection struct as only argument.
 func (w *Wango) SetSessionCloseCallback(cb func(*Conn)) {
 	w.closeCB = cb
 }
@@ -223,7 +229,7 @@ func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
 	}
 }
 
-// Subscribe sends subscribe request for uri provided
+// Subscribe sends subscribe request for uri provided.
 func (w *Wango) Subscribe(uri string, fn EventHandler, id ...string) error {
 	if uri == "" {
 		return errors.New("Empty uri")
@@ -637,6 +643,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
 	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
 	cn.breakChan = make(chan struct{})
+	cn.connected = true
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn
@@ -656,14 +663,20 @@ func (w *Wango) getConnection(id string) (*Conn, error) {
 }
 
 func (w *Wango) deleteConnection(c *Conn) {
+	c.extraLocker.Lock()
+	c.connected = false
+	c.extraLocker.Unlock()
+
 	w.connectionsLocker.Lock()
 	delete(w.connections, c.id)
 	w.connectionsLocker.Unlock()
+
 	w.subscribersLocker.Lock()
 	for _, subscribers := range w.subscribers {
 		delete(subscribers, c.id)
 	}
 	w.subscribersLocker.Unlock()
+
 	if w.closeCB != nil {
 		w.closeCB(c)
 	}

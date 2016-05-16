@@ -323,6 +323,28 @@ func TestSessionOpenSessionCloseHandlers(t *testing.T) {
 	}
 }
 
+func TestConnectionStatus(t *testing.T) {
+	path := "/wamp-client-status"
+	server := createWampServer(path)
+	client, err := Connect(url+path, origin)
+	if err != nil {
+		t.Fatal("Can't connect to server", err.Error())
+	}
+	server.RegisterRPCHandler("test", func(c *Conn, uri string, args ...interface{}) (interface{}, error) {
+		if !c.Connected() {
+			t.Fatal("Should be connected")
+		}
+		time.Sleep(time.Millisecond * 100)
+		if c.Connected() {
+			t.Fatal("Should not be connected")
+		}
+		return nil, nil
+	})
+	go client.Call("test")
+	time.Sleep(time.Millisecond * 50)
+	client.Disconnect()
+}
+
 func testRPCHandlerForClient(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	res := "test-"
 	if len(args) > 0 {
