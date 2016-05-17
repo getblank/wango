@@ -65,6 +65,17 @@ func (c *Conn) SetExtra(extra interface{}) {
 	c.extraLocker.Unlock()
 }
 
+func (c *Conn) heartbeating() {
+	var hbSequence int
+	ticker := time.NewTicker(heartBeatFrequency)
+	for c.Connected() {
+		msg, _ := createMessage(msgHeartbeat, hbSequence)
+		c.send(msg)
+		<-ticker.C
+	}
+	ticker.Stop()
+}
+
 func (c *Conn) resetTimeoutTimer() {
 	c.aliveTimer.Reset(c.aliveTimeout)
 }

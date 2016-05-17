@@ -11,7 +11,10 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var defaultTimeout = time.Second * 15
+var (
+	defaultConnectionTimeout = time.Second * 15
+	heartBeatFrequency       = time.Second * 3
+)
 
 // Wango represents a WAMP server that handles RPC and pub/sub.
 type Wango struct {
@@ -63,7 +66,7 @@ func Connect(url, origin string, timeout ...time.Duration) (*Wango, error) {
 	if timeout != nil {
 		w.aliveTimeout = timeout[0]
 	} else {
-		w.aliveTimeout = defaultTimeout
+		w.aliveTimeout = defaultConnectionTimeout
 	}
 
 	err = c.receiveWelcome()
@@ -72,6 +75,7 @@ func Connect(url, origin string, timeout ...time.Duration) (*Wango, error) {
 	}
 	go c.sender()
 	go w.receive(c)
+	go c.heartbeating()
 
 	return w, nil
 }
@@ -87,7 +91,7 @@ func New(timeout ...time.Duration) *Wango {
 	if timeout != nil {
 		w.aliveTimeout = timeout[0]
 	} else {
-		w.aliveTimeout = defaultTimeout
+		w.aliveTimeout = defaultConnectionTimeout
 	}
 
 	return w
@@ -689,6 +693,7 @@ func (w *Wango) getConnection(id string) (*Conn, error) {
 }
 
 func (w *Wango) deleteConnection(c *Conn) {
+	c.aliveTimer.Stop()
 	c.extraLocker.Lock()
 	c.connected = false
 	c.extraLocker.Unlock()
