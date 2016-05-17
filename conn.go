@@ -2,6 +2,7 @@ package wango
 
 import (
 	"sync"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -21,6 +22,9 @@ type Conn struct {
 	eventHandlers       map[string]EventHandler
 	eventHandlersLocker sync.RWMutex
 	connected           bool
+	clientConnection    bool
+	aliveTimer          *time.Timer
+	aliveTimeout        time.Duration
 }
 
 // EventHandler is an interface for handlers to published events. The uri
@@ -61,6 +65,10 @@ func (c *Conn) SetExtra(extra interface{}) {
 	c.extraLocker.Unlock()
 }
 
+func (c *Conn) resetTimeoutTimer() {
+	c.aliveTimer.Reset(c.aliveTimeout)
+}
+
 func (c *Conn) send(msg interface{}) {
 	c.sendChan <- msg
 }
@@ -69,7 +77,7 @@ func (c *Conn) sender() {
 	for msg := range c.sendChan {
 		err := websocket.Message.Send(c.connection, msg)
 		if err != nil {
-			println("Error when send message", err)
+			println("Error when send message", err.Error())
 		}
 	}
 }

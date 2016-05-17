@@ -5,10 +5,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
+
+var defaultTimeout = time.Second * 15
 
 // Wango represents a WAMP server that handles RPC and pub/sub.
 type Wango struct {
@@ -21,6 +24,7 @@ type Wango struct {
 	subscribersLocker sync.RWMutex
 	openCB            func(*Conn)
 	closeCB           func(*Conn)
+	aliveTimeout      time.Duration
 }
 
 // RPCHandler describes func for handling RPC requests
@@ -45,7 +49,7 @@ type subRequestsListeners struct {
 }
 
 // Connect connects to server with provided URI and origin
-func Connect(url, origin string) (*Wango, error) {
+func Connect(url, origin string, timeout ...time.Duration) (*Wango, error) {
 	if !strings.HasPrefix(url, "ws://") && !strings.HasPrefix(url, "wss://") {
 		url = "ws://" + url
 	}
@@ -55,6 +59,12 @@ func Connect(url, origin string) (*Wango, error) {
 	}
 	w := New()
 	c := w.addConnection(ws, nil)
+	c.clientConnection = true
+	if timeout != nil {
+		w.aliveTimeout = timeout[0]
+	} else {
+		w.aliveTimeout = defaultTimeout
+	}
 
 	err = c.receiveWelcome()
 	if err != nil {
@@ -67,13 +77,19 @@ func Connect(url, origin string) (*Wango, error) {
 }
 
 // New creates new Wango and returns pointer to it
-func New() *Wango {
+func New(timeout ...time.Duration) *Wango {
 	w := new(Wango)
 	w.connections = map[string]*Conn{}
 	w.rpcHandlers = map[string]RPCHandler{}
 	w.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
 	w.subHandlers = map[string]subHandler{}
 	w.subscribers = map[string]subscribersMap{}
+	if timeout != nil {
+		w.aliveTimeout = timeout[0]
+	} else {
+		w.aliveTimeout = defaultTimeout
+	}
+
 	return w
 }
 
@@ -314,7 +330,6 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 // If extra data provided, it will kept in connection and will pass to rpc/pub/sub handlers
 func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 	c := w.addConnection(ws, extra)
-	defer w.deleteConnection(c)
 	if w.openCB != nil {
 		w.openCB(c)
 	}
@@ -327,7 +342,10 @@ func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 }
 
 func (w *Wango) receive(c *Conn) {
-	defer c.connection.Close()
+	defer func() {
+		c.connection.Close()
+		w.deleteConnection(c)
+	}()
 	dataChan := make(chan string)
 	go func() {
 		var data string
@@ -354,6 +372,8 @@ MessageLoop:
 				// error parsing!!!
 				println("Error:", err.Error())
 			}
+			c.resetTimeoutTimer()
+
 			switch msgType {
 			case msgPrefix:
 			// not implemented
@@ -616,7 +636,9 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 }
 
 func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data string) {
-	c.send(data)
+	if !c.clientConnection {
+		c.send(data)
+	}
 }
 
 func (w *Wango) handlePublish(c *Conn, msg []interface{}) {
@@ -644,6 +666,10 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
 	cn.breakChan = make(chan struct{})
 	cn.connected = true
+	cn.aliveTimeout = w.aliveTimeout
+	cn.aliveTimer = time.AfterFunc(cn.aliveTimeout, func() {
+		cn.Close()
+	})
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn

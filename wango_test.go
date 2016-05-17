@@ -345,6 +345,28 @@ func TestConnectionStatus(t *testing.T) {
 	client.Disconnect()
 }
 
+func TestClientOpenCloseCallbacks(t *testing.T) {
+	path := "/wamp-client-callbacks"
+	createWampServer(path)
+	client, err := Connect(url+path, origin)
+	if err != nil {
+		t.Fatal("Can't connect to server", err.Error())
+	}
+	var closeCallbackCalled bool
+	client.SetSessionCloseCallback(func(c *Conn) {
+		closeCallbackCalled = true
+	})
+	if client.closeCB == nil {
+		t.Fatal("Close callback was not set")
+	}
+	client.Disconnect()
+	time.Sleep(time.Millisecond * 50)
+	if !closeCallbackCalled {
+		t.Fatal("Close callback was not called")
+	}
+
+}
+
 func testRPCHandlerForClient(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 	res := "test-"
 	if len(args) > 0 {
