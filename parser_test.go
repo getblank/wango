@@ -2,10 +2,10 @@ package wango
 
 import "testing"
 
-var validMessage = `["CALL","0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e","com.state"]`
-var invalidRPCMessage = `[2,"0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e"]`
-var invalidMessage = `["CALL","0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e","com.state"`
-var validSubMessage = `[5,"com.uri", 6]`
+var validMessage = []byte(`["CALL","0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e","com.state"]`)
+var invalidRPCMessage = []byte(`[2,"0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e"]`)
+var invalidMessage = []byte(`["CALL","0f2ac8b4-0d18-c6a0-acf1-a338f53a7f2e","com.state"`)
+var validSubMessage = []byte(`[5,"com.uri", 6]`)
 
 func TestParseValidMessage(t *testing.T) {
 	callType, msg, err := parseMessage(validMessage)

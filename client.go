@@ -8,7 +8,7 @@ import (
 )
 
 func (c *Conn) receiveWelcome() error {
-	var data string
+	var data []byte
 	err := websocket.Message.Receive(c.connection, &data)
 	if err != nil {
 		return errors.Wrap(err, "Can't receive welcome message")

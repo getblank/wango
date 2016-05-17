@@ -357,9 +357,9 @@ func (w *Wango) receive(c *Conn) {
 		c.connection.Close()
 		w.deleteConnection(c)
 	}()
-	dataChan := make(chan string)
+	dataChan := make(chan []byte)
 	go func() {
-		var data string
+		var data []byte
 		for {
 			err := websocket.Message.Receive(c.connection, &data)
 			if err != nil {
@@ -646,9 +646,9 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 	go c.send(response)
 }
 
-func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data string) {
+func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data []byte) {
 	if !c.clientConnection {
-		c.send([]byte(data))
+		c.send(data)
 	}
 }
 

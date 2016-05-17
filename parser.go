@@ -6,9 +6,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func parseMessage(_msg string) (int, []interface{}, error) {
+func parseMessage(_msg []byte) (int, []interface{}, error) {
 	var msg []interface{}
-	err := json.Unmarshal([]byte(_msg), &msg)
+	err := json.Unmarshal(_msg, &msg)
 	if err != nil {
 		return 0, nil, errors.Wrap(err, "when unmarshaling wamp message")
 	}
