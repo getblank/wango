@@ -28,6 +28,7 @@ type Wango struct {
 	openCB            func(*Conn)
 	closeCB           func(*Conn)
 	aliveTimeout      time.Duration
+	stringMode        bool
 }
 
 // RPCHandler describes func for handling RPC requests
@@ -153,6 +154,11 @@ func (w *Wango) SetSessionOpenCallback(cb func(*Conn)) {
 // Callback passes connection struct as only argument.
 func (w *Wango) SetSessionCloseCallback(cb func(*Conn)) {
 	w.closeCB = cb
+}
+
+// StringMode sets a string mode to use TextFrame encoding for sending messages
+func (w *Wango) StringMode() {
+	w.stringMode = true
 }
 
 // Publish used for publish event
@@ -337,6 +343,7 @@ func (w *Wango) WampHandler(ws *websocket.Conn, extra interface{}) {
 	if w.openCB != nil {
 		w.openCB(c)
 	}
+	c.stringMode = w.stringMode
 
 	go c.sender()
 
@@ -641,7 +648,7 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 
 func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data string) {
 	if !c.clientConnection {
-		c.send(data)
+		c.send([]byte(data))
 	}
 }
 
@@ -663,7 +670,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.connection = ws
 	cn.id = newUUIDv4()
 	cn.extra = extra
-	cn.sendChan = make(chan interface{}, sendChanBufferSize)
+	cn.sendChan = make(chan []byte, sendChanBufferSize)
 	cn.eventHandlers = map[string]EventHandler{}
 	cn.callResults = map[string]chan *callResult{}
 	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}

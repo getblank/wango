@@ -13,7 +13,7 @@ type Conn struct {
 	connection          *websocket.Conn
 	extra               interface{}
 	extraLocker         sync.RWMutex
-	sendChan            chan interface{}
+	sendChan            chan []byte
 	breakChan           chan struct{}
 	subRequests         subRequestsListeners
 	unsubRequests       subRequestsListeners
@@ -25,6 +25,7 @@ type Conn struct {
 	clientConnection    bool
 	aliveTimer          *time.Timer
 	aliveTimeout        time.Duration
+	stringMode          bool
 }
 
 // EventHandler is an interface for handlers to published events. The uri
@@ -65,6 +66,11 @@ func (c *Conn) SetExtra(extra interface{}) {
 	c.extraLocker.Unlock()
 }
 
+// StringMode sets a string mode to use TextFrame encoding for sending messages
+func (c *Conn) StringMode() {
+	c.stringMode = true
+}
+
 func (c *Conn) heartbeating() {
 	var hbSequence int
 	ticker := time.NewTicker(heartBeatFrequency)
@@ -80,13 +86,18 @@ func (c *Conn) resetTimeoutTimer() {
 	c.aliveTimer.Reset(c.aliveTimeout)
 }
 
-func (c *Conn) send(msg interface{}) {
+func (c *Conn) send(msg []byte) {
 	c.sendChan <- msg
 }
 
 func (c *Conn) sender() {
+	var err error
 	for msg := range c.sendChan {
-		err := websocket.Message.Send(c.connection, msg)
+		if c.stringMode {
+			err = websocket.Message.Send(c.connection, string(msg))
+		} else {
+			err = websocket.Message.Send(c.connection, msg)
+		}
 		if err != nil {
 			println("Error when send message", err.Error())
 		}
