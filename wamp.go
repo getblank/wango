@@ -257,7 +257,7 @@ func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
 }
 
 // Subscribe sends subscribe request for uri provided.
-func (w *Wango) Subscribe(uri string, fn EventHandler, id ...string) error {
+func (w *Wango) Subscribe(uri string, fn func(uri string, event interface{}), id ...string) error {
 	if uri == "" {
 		return errors.New("Empty uri")
 	}
