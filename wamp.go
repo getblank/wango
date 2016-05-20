@@ -231,6 +231,7 @@ func (w *Wango) RegisterRPCHandler(_uri interface{}, fn func(c *Conn, uri string
 }
 
 // RegisterSubHandler registers subscription handler function for provided URI
+// fnSub and fnPub can be nil
 func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnPub func(uri string, event interface{}, extra interface{}) (bool, interface{})) error {
 	if _, ok := w.subHandlers[uri]; ok {
 		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
@@ -600,11 +601,14 @@ func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 	defer w.subscribersLocker.Unlock()
 	for uri, handler := range w.subHandlers {
 		if strings.HasPrefix(_uri, uri) {
-			data, err := handler.subHandler(c, _uri, subMessage.Args...)
-			if err != nil {
-				response, _ := createMessage(msgSubscribeError, _uri, createError(err))
-				go c.send(response)
-				return
+			var data interface{}
+			if handler.subHandler != nil {
+				data, err = handler.subHandler(c, _uri, subMessage.Args...)
+				if err != nil {
+					response, _ := createMessage(msgSubscribeError, _uri, createError(err))
+					go c.send(response)
+					return
+				}
 			}
 			if _, ok := w.subscribers[_uri]; !ok {
 				w.subscribers[_uri] = subscribersMap{}
