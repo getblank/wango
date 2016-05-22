@@ -102,7 +102,7 @@ func TestSubHandling(t *testing.T) {
 	server := createWampServer(path)
 
 	uri := "wango.sub-test"
-	err := server.RegisterSubHandler(uri, testSubHandler, nil)
+	err := server.RegisterSubHandler(uri, testSubHandler, nil, nil)
 	if err != nil {
 		t.Fatal("Can't register handler", err)
 	}
@@ -110,7 +110,7 @@ func TestSubHandling(t *testing.T) {
 		t.Fatal("subHandler not registered")
 	}
 
-	err = server.RegisterSubHandler(uri, testSubHandler, nil)
+	err = server.RegisterSubHandler(uri, testSubHandler, nil, nil)
 	if err == nil {
 		t.Fatal("Must not register handler")
 	}
@@ -129,7 +129,7 @@ func TestSubHandling(t *testing.T) {
 	uri = uri + ".wait"
 	eventToSend := "test-event"
 	appendix := "appendix"
-	err = server.RegisterSubHandler(uri, testSubHandler, func(_uri string, event interface{}, extra interface{}) (bool, interface{}) {
+	err = server.RegisterSubHandler(uri, testSubHandler, nil, func(_uri string, event interface{}, extra interface{}) (bool, interface{}) {
 		if _uri != uri {
 			t.Fatal("Uri mismatched")
 		}
@@ -203,7 +203,7 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 	server.RegisterRPCHandler("wango.test", testRPCHandlerWithPub)
 	server.RegisterSubHandler(subUri, func(c *Conn, uri string, args ...interface{}) (interface{}, error) {
 		return nil, nil
-	}, nil)
+	}, nil, nil)
 
 	url := "localhost:1234"
 	client, err := Connect(url+path, origin)

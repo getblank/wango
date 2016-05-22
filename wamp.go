@@ -41,8 +41,9 @@ type SubHandler func(c *Conn, uri string, args ...interface{}) (interface{}, err
 type PubHandler func(uri string, event interface{}, extra interface{}) (bool, interface{})
 
 type subHandler struct {
-	subHandler SubHandler
-	pubHandler PubHandler
+	subHandler   SubHandler
+	unsubHandler SubHandler
+	pubHandler   PubHandler
 }
 
 type subscribersMap map[string]bool
@@ -230,16 +231,21 @@ func (w *Wango) RegisterRPCHandler(_uri interface{}, fn func(c *Conn, uri string
 	return nil
 }
 
-// RegisterSubHandler registers subscription handler function for provided URI
-// fnSub and fnPub can be nil
-func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnPub func(uri string, event interface{}, extra interface{}) (bool, interface{})) error {
+// RegisterSubHandler registers subscription handler function for provided URI.
+// fnSub, fnUnsub and fnPub can be nil.
+// fnSub will called when subscribe event arrived.
+// fnUnsub will called when unsubscribe event arrived.
+// fnPub will called when called Publish method. It can control sending event to connections. If first returned argument is true,
+// then to connection will send data from second argument.
+func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnUnsub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnPub func(uri string, event interface{}, extra interface{}) (bool, interface{})) error {
 	if _, ok := w.subHandlers[uri]; ok {
 		return errors.Wrap(ErrHandlerAlreadyRegistered, "when registering subHandler")
 	}
 
 	w.subHandlers[uri] = subHandler{
-		subHandler: fnSub,
-		pubHandler: fnPub,
+		subHandler:   fnSub,
+		unsubHandler: fnUnsub,
+		pubHandler:   fnPub,
 	}
 	return nil
 }
@@ -250,7 +256,7 @@ func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
 	for _, id := range connIDs {
 		c, err := w.getConnection(id)
 		if err != nil {
-			return
+			continue
 		}
 		c.send(msg)
 	}
@@ -639,6 +645,11 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 				delete(subscribers, c.id)
 				response, _ := createMessage(msgUnsubscribed, _uri)
 				go c.send(response)
+				for handlersURI, handler := range w.subHandlers {
+					if strings.HasPrefix(_uri, handlersURI) && handler.unsubHandler != nil {
+						handler.unsubHandler(c, _uri, nil)
+					}
+				}
 				return
 			}
 			response, _ := createMessage(msgUnsubscribeError, _uri, createError(ErrNotSubscribes))
