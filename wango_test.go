@@ -91,7 +91,7 @@ func TestRPCHandling(t *testing.T) {
 
 	uri = "wango.rgx"
 	server.RegisterRPCHandler(regexp.MustCompile(`^wango\..*`), testRPCHandlerWithErrorReturn)
-	res, err = connectAndRPC(path, uri, nil)
+	_, err = connectAndRPC(path, uri, nil)
 	if err == nil {
 		t.Fatal("RPC failed. No error returns")
 	}
@@ -408,7 +408,7 @@ func connectAndRPC(path, uri string, args ...interface{}) (interface{}, error) {
 	}
 	defer ws.Close()
 	msgId := newUUIDv4()
-	message, err := createMessage(msgCall, msgId, uri)
+	message, _ := createMessage(msgCall, msgId, uri)
 	websocket.Message.Send(ws, message)
 	for {
 		var msg string

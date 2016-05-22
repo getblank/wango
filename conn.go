@@ -32,10 +32,12 @@ type Conn struct {
 // is the URI of the event and event is the event centents.
 type EventHandler func(uri string, event interface{})
 
+// Close closes websocket connection
 func (c *Conn) Close() {
 	c.breakChan <- struct{}{}
 }
 
+// Connected returns true if websocket connection established and not closed
 func (c *Conn) Connected() bool {
 	c.extraLocker.RLock()
 	defer c.extraLocker.RUnlock()
@@ -43,6 +45,7 @@ func (c *Conn) Connected() bool {
 	return connected
 }
 
+// GetExtra returns extra data stored in connection
 func (c *Conn) GetExtra() interface{} {
 	c.extraLocker.RLock()
 	extra := c.extra
@@ -60,6 +63,7 @@ func (c *Conn) RemoteAddr() string {
 	return c.connection.Request().RemoteAddr
 }
 
+// SetExtra stores extra data in connection
 func (c *Conn) SetExtra(extra interface{}) {
 	c.extraLocker.Lock()
 	c.extra = extra

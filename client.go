@@ -14,6 +14,9 @@ func (c *Conn) receiveWelcome() error {
 		return errors.Wrap(err, "Can't receive welcome message")
 	}
 	msgType, msg, err := parseMessage(data)
+	if err != nil {
+		return errors.Wrap(err, "Parsing welcome message")
+	}
 	if msgType != msgWelcome {
 		if typeString, ok := msgIntTypes[msgType]; ok {
 			return errors.New("First message received must be welcome. Received: " + typeString)
