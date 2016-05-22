@@ -526,8 +526,6 @@ func connectAndWaitForEvent(t *testing.T, path, uri string, args ...interface{})
 			return nil, errors.New("Time is gone")
 		}
 	}
-
-	return nil, nil
 }
 
 func connectAndHeartbeat(t *testing.T, path, uri string, args ...interface{}) {

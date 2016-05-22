@@ -12,15 +12,15 @@ type Conn struct {
 	id                  string
 	connection          *websocket.Conn
 	extra               interface{}
-	extraLocker         sync.RWMutex
+	extraLocker         *sync.RWMutex
 	sendChan            chan []byte
 	breakChan           chan struct{}
 	subRequests         subRequestsListeners
 	unsubRequests       subRequestsListeners
 	callResults         map[string]chan *callResult
-	callResultsLocker   sync.Mutex
+	callResultsLocker   *sync.Mutex
 	eventHandlers       map[string]EventHandler
-	eventHandlersLocker sync.RWMutex
+	eventHandlersLocker *sync.RWMutex
 	connected           bool
 	clientConnection    bool
 	aliveTimer          *time.Timer

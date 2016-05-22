@@ -48,7 +48,7 @@ type subHandler struct {
 type subscribersMap map[string]bool
 
 type subRequestsListeners struct {
-	locker    sync.Mutex
+	locker    *sync.Mutex
 	listeners map[string][]subRequestsListener
 }
 
@@ -677,14 +677,17 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.sendChan = make(chan []byte, sendChanBufferSize)
 	cn.eventHandlers = map[string]EventHandler{}
 	cn.callResults = map[string]chan *callResult{}
-	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
-	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}}
+	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}, locker: new(sync.Mutex)}
+	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}, locker: new(sync.Mutex)}
 	cn.breakChan = make(chan struct{})
 	cn.connected = true
 	cn.aliveTimeout = w.aliveTimeout
 	cn.aliveTimer = time.AfterFunc(cn.aliveTimeout, func() {
 		cn.Close()
 	})
+	cn.extraLocker = new(sync.RWMutex)
+	cn.callResultsLocker = new(sync.Mutex)
+	cn.eventHandlersLocker = new(sync.RWMutex)
 	w.connectionsLocker.Lock()
 	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn
