@@ -217,13 +217,15 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 		if uri != subUri {
 			t.Fatal("Invalid URI")
 		}
-		if event.(string) != "test" {
+		if event != nil && event.(string) != "test" {
 			t.Fatal("Invalid event")
 		}
 		if counter > 1 {
 			resChan <- true
 		}
-		counter++
+		if event != nil {
+			counter++
+		}
 	})
 	if err != nil {
 		t.Fatal("Can't subscribe", err)
