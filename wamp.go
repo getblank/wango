@@ -506,6 +506,15 @@ func (w *Wango) handleSubscribed(c *Conn, msg []interface{}) {
 	for _, l := range listeners {
 		l.ch <- nil
 	}
+	if len(subMessage.Args) != 0 {
+		c.eventHandlersLocker.RLock()
+		handler, ok := c.eventHandlers[subMessage.URI]
+		c.eventHandlersLocker.RUnlock()
+		if !ok {
+			return
+		}
+		handler(subMessage.URI, subMessage.Args[0])
+	}
 }
 
 func (w *Wango) handleSubscribeError(c *Conn, msg []interface{}) {
