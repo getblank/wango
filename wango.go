@@ -1,10 +1,10 @@
 package wango
 
 import (
+	"errors"
 	"time"
 
 	"github.com/getblank/uuid"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -66,11 +66,12 @@ var (
 		"HB":               20,
 	}
 
-	ErrHandlerAlreadyRegistered = errors.New("Handler already registered")
-	ErrRPCNotRegistered         = errors.New("RPC not registered")
-	ErrSubURINotRegistered      = errors.New("Sub URI not registered")
-	ErrForbidden                = errors.New("403 forbidden")
-	ErrNotSubscribes            = errors.New("Not subscribed")
+	errHandlerAlreadyRegistered = errors.New("Handler already registered")
+	errRPCNotRegistered         = errors.New("RPC not registered")
+	errSubURINotRegistered      = errors.New("Sub URI not registered")
+	errForbidden                = errors.New("403 forbidden")
+	errNotSubscribes            = errors.New("Not subscribed")
+	errConnectionClosed         = errors.New("Connection closed")
 )
 
 func newUUIDv4() string {
