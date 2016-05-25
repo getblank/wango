@@ -696,7 +696,7 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.extra = extra
 	cn.sendChan = make(chan []byte, sendChanBufferSize)
 	cn.eventHandlers = map[string]EventHandler{}
-	cn.callResults = map[string]chan *callResult{}
+	cn.callResults = map[interface{}]chan *callResult{}
 	cn.subRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}, locker: new(sync.Mutex)}
 	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}, locker: new(sync.Mutex)}
 	cn.breakChan = make(chan struct{})

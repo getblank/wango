@@ -37,25 +37,23 @@ func parseWampMessage(typ int, msg []interface{}) (*wampMsg, error) {
 	message := new(wampMsg)
 	switch typ {
 	case msgCall:
-		callID, ok := msg[1].(string)
-		if !ok {
-			return nil, errors.New("invalid wamp message. callID is not a string")
+		if msg[1] == nil {
+			return nil, errors.New("invalid wamp message. callID is nil")
 		}
+		message.ID = msg[1]
 		uri, ok := msg[2].(string)
 		if !ok {
 			return nil, errors.New("invalid wamp message. uri is not a string")
 		}
-		message.ID = callID
 		message.URI = uri
 		if len(msg) > 3 {
 			message.Args = msg[3:]
 		}
 	case msgCallResult, msgCallError:
-		callID, ok := msg[1].(string)
-		if !ok {
-			return nil, errors.New("invalid wamp message. callID is not a string")
+		if msg[1] == nil {
+			return nil, errors.New("invalid wamp message. callID is nil")
 		}
-		message.ID = callID
+		message.ID = msg[1]
 		if len(msg) > 2 {
 			message.Args = msg[2:]
 		}

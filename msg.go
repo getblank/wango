@@ -3,7 +3,7 @@ package wango
 import "encoding/json"
 
 type wampMsg struct {
-	ID   string
+	ID   interface{}
 	URI  string
 	Args []interface{}
 }

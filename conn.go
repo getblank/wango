@@ -17,7 +17,7 @@ type Conn struct {
 	breakChan           chan struct{}
 	subRequests         subRequestsListeners
 	unsubRequests       subRequestsListeners
-	callResults         map[string]chan *callResult
+	callResults         map[interface{}]chan *callResult
 	callResultsLocker   *sync.Mutex
 	eventHandlers       map[string]EventHandler
 	eventHandlersLocker *sync.RWMutex
