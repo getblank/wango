@@ -144,3 +144,13 @@ func (s subRequestsListeners) getRequests(uri string) []subRequestsListener {
 	delete(s.listeners, uri)
 	return listeners
 }
+
+func (s subRequestsListeners) closeRequests() {
+	s.locker.Lock()
+	defer s.locker.Unlock()
+	for _, listeners := range s.listeners {
+		for _, listener := range listeners {
+			listener.ch <- errConnectionClosed
+		}
+	}
+}

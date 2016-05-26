@@ -736,6 +736,8 @@ func (w *Wango) deleteConnection(c *Conn) {
 	delete(w.connections, c.id)
 	w.connectionsLocker.Unlock()
 
+	c.subRequests.closeRequests()
+
 	w.subscribersLocker.Lock()
 	for _, subscribers := range w.subscribers {
 		delete(subscribers, c.id)
