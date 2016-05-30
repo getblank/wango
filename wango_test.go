@@ -179,7 +179,7 @@ func TestClientConnectingAndRPC(t *testing.T) {
 
 	_, err = client.Call("wango.test-error")
 	if err == nil {
-		t.Fatal("Call must fail", err)
+		t.Fatal("Can't call")
 	}
 }
 
@@ -427,8 +427,7 @@ func connectAndRPC(path, uri string, args ...interface{}) (interface{}, error) {
 			return message[2], nil
 		}
 		if message[0].(float64) == msgCallError && message[1].(string) == msgId {
-			errDesc, _ := parseErrMsg(message[2])
-			return nil, errors.New(errDesc.Desc)
+			return nil, errors.New(message[2].(string))
 		}
 	}
 }

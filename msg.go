@@ -8,10 +8,6 @@ type wampMsg struct {
 	Args []interface{}
 }
 
-type Error struct {
-	Desc string `json:"desc"`
-}
-
 func createMessage(args ...interface{}) ([]byte, error) {
 	return json.Marshal(args)
 }
@@ -28,7 +24,7 @@ func createWelcomeMessage(id string) ([]byte, error) {
 	return createMessage(msgWelcome, id, 1, identity)
 }
 
-func createError(err interface{}) Error {
+func createError(err interface{}) string {
 	var text string
 	switch err.(type) {
 	case error:
@@ -36,5 +32,5 @@ func createError(err interface{}) Error {
 	case string:
 		text = err.(string)
 	}
-	return Error{"error#" + text}
+	return "error#" + text
 }

@@ -69,18 +69,3 @@ func parseWampMessage(typ int, msg []interface{}) (*wampMsg, error) {
 	}
 	return message, nil
 }
-
-func parseErrMsg(in interface{}) (Error, error) {
-	switch in.(type) {
-	case string:
-		return Error{in.(string)}, nil
-	case map[string]interface{}:
-		_desc, ok := in.(map[string]interface{})["desc"]
-		if !ok {
-			return Error{}, errors.New("Invalid input error interface{}")
-		}
-		desc, ok := _desc.(string)
-		return Error{desc}, nil
-	}
-	return Error{}, errors.New("Invalid input error interface{}")
-}

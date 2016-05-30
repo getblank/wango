@@ -470,13 +470,10 @@ func (w *Wango) handleCallError(c *Conn, msg []interface{}) {
 	res := new(callResult)
 	res.err = errors.New("RPC error#")
 	if len(callResultMessage.Args) > 0 {
-		var _err Error
-		_err, err = parseErrMsg(callResultMessage.Args[0])
-		if err == nil {
-			err = errors.New("RPC error#" + _err.Desc)
+		if _err := callResultMessage.Args[0].(string); ok {
+			err = errors.New("RPC error#" + _err)
 		}
 	}
-
 	resChan <- &callResult{nil, err}
 }
 
