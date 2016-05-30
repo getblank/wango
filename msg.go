@@ -32,5 +32,5 @@ func createError(err interface{}) string {
 	case string:
 		text = err.(string)
 	}
-	return "error#" + text
+	return text
 }
