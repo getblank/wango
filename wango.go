@@ -2,6 +2,7 @@ package wango
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/getblank/uuid"
@@ -72,12 +73,16 @@ var (
 	errForbidden                = errors.New("403 forbidden")
 	errNotSubscribes            = errors.New("Not subscribed")
 	errConnectionClosed         = errors.New("Connection closed")
+
+	debugMode bool
 )
 
 func newUUIDv4() string {
 	return uuid.NewV4()
 }
 
-func init() {
-
+func log(in ...interface{}) {
+	if debugMode {
+		fmt.Println(in...)
+	}
 }
