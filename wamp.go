@@ -195,7 +195,7 @@ func (w *Wango) Publish(uri string, event interface{}) {
 	for _, id := range subscriberIds {
 		c, err := w.getConnection(id)
 		if err != nil {
-			log("Connection not found", err)
+			logger("Connection not found", err)
 			continue
 		}
 
@@ -393,7 +393,7 @@ MessageLoop:
 			msgType, msg, err := parseMessage(data)
 			if err != nil {
 				// error parsing!!!
-				log("Error:", err.Error())
+				logger("Error:", err.Error())
 			}
 			c.resetTimeoutTimer()
 
@@ -443,14 +443,14 @@ MessageLoop:
 func (w *Wango) handleCallResult(c *Conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	c.callResultsLocker.Lock()
 	resChan, ok := c.callResults[callResultMessage.ID]
 	c.callResultsLocker.Unlock()
 	if !ok {
-		log("Achtung! No res chan!")
+		logger("Achtung! No res chan!")
 		return
 	}
 	res := new(callResult)
@@ -463,14 +463,14 @@ func (w *Wango) handleCallResult(c *Conn, msg []interface{}) {
 func (w *Wango) handleCallError(c *Conn, msg []interface{}) {
 	callResultMessage, err := parseWampMessage(msgCallResult, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	c.callResultsLocker.Lock()
 	resChan, ok := c.callResults[callResultMessage.ID]
 	c.callResultsLocker.Unlock()
 	if !ok {
-		log("Achtung! No res chan!")
+		logger("Achtung! No res chan!")
 	}
 	res := new(callResult)
 	res.err = errors.New("RPC error#")
@@ -485,7 +485,7 @@ func (w *Wango) handleCallError(c *Conn, msg []interface{}) {
 func (w *Wango) handleEvent(c *Conn, msg []interface{}) {
 	eventMessage, err := parseWampMessage(msgEvent, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	c.eventHandlersLocker.RLock()
@@ -504,7 +504,7 @@ func (w *Wango) handleEvent(c *Conn, msg []interface{}) {
 func (w *Wango) handleSubscribed(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribed, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	listeners := c.subRequests.getRequests(subMessage.URI)
@@ -525,7 +525,7 @@ func (w *Wango) handleSubscribed(c *Conn, msg []interface{}) {
 func (w *Wango) handleSubscribeError(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribeError, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	listeners := c.subRequests.getRequests(subMessage.URI)
@@ -543,7 +543,7 @@ func (w *Wango) handleSubscribeError(c *Conn, msg []interface{}) {
 func (w *Wango) handleUnsubscribed(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribed, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	listeners := c.unsubRequests.getRequests(subMessage.URI)
@@ -555,7 +555,7 @@ func (w *Wango) handleUnsubscribed(c *Conn, msg []interface{}) {
 func (w *Wango) handleUnsubscribeError(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgUnsubscribeError, msg)
 	if err != nil {
-		log(err)
+		logger(err)
 		return
 	}
 	listeners := c.unsubRequests.getRequests(subMessage.URI)
@@ -573,7 +573,7 @@ func (w *Wango) handleUnsubscribeError(c *Conn, msg []interface{}) {
 func (w *Wango) handleRPCCall(c *Conn, msg []interface{}) {
 	rpcMessage, err := parseWampMessage(msgCall, msg)
 	if err != nil {
-		log("Can't parse rpc message", err.Error())
+		logger("Can't parse rpc message", err.Error())
 		return
 	}
 
@@ -612,7 +612,7 @@ func (w *Wango) handleRPCCall(c *Conn, msg []interface{}) {
 func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 	subMessage, err := parseWampMessage(msgSubscribe, msg)
 	if err != nil {
-		log("Can't parse rpc message", err.Error())
+		logger("Can't parse rpc message", err.Error())
 		return
 	}
 
@@ -646,7 +646,7 @@ func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 	unsubMessage, err := parseWampMessage(msgUnsubscribe, msg)
 	if err != nil {
-		log("Can't parse rpc message", err.Error())
+		logger("Can't parse rpc message", err.Error())
 		return
 	}
 
@@ -684,7 +684,7 @@ func (w *Wango) handleHeartbeat(c *Conn, msg []interface{}, data []byte) {
 func (w *Wango) handlePublish(c *Conn, msg []interface{}) {
 	pubMessage, err := parseWampMessage(msgPublish, msg)
 	if err != nil {
-		log("Can't parse publish message", err.Error())
+		logger("Can't parse publish message", err.Error())
 		return
 	}
 	var event interface{}

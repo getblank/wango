@@ -81,7 +81,7 @@ func newUUIDv4() string {
 	return uuid.NewV4()
 }
 
-func log(in ...interface{}) {
+func logger(in ...interface{}) {
 	if debugMode {
 		fmt.Println(in...)
 	}

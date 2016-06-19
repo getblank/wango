@@ -113,7 +113,7 @@ func (c *Conn) sender() {
 			err = websocket.Message.Send(c.connection, msg)
 		}
 		if err != nil {
-			log("Error when send message", err.Error())
+			logger("Error when send message", err.Error())
 		}
 	}
 }
