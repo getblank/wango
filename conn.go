@@ -65,7 +65,7 @@ func (c *Conn) RemoteAddr() string {
 
 // SendEvent sends event for provided uri directly to connection
 func (c *Conn) SendEvent(uri string, event interface{}) error {
-	msg, _ := createMessage(msgEvent, uri, event)
+	msg, _ := createMessage(msgIntTypes[msgEvent], uri, event)
 	if !c.Connected() {
 		return errConnectionClosed
 	}
@@ -89,7 +89,7 @@ func (c *Conn) heartbeating() {
 	var hbSequence int
 	ticker := time.NewTicker(heartBeatFrequency)
 	for c.Connected() {
-		msg, _ := createMessage(msgHeartbeat, hbSequence)
+		msg, _ := createMessage(msgIntTypes[msgHeartbeat], hbSequence)
 		c.send(msg)
 		<-ticker.C
 	}

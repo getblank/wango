@@ -423,10 +423,10 @@ func connectAndRPC(path, uri string, args ...interface{}) (interface{}, error) {
 		if err != nil {
 			panic("Can't unmarshal message")
 		}
-		if message[0].(float64) == msgCallResult && message[1].(string) == msgId {
+		if message[0].(string) == msgIntTypes[msgCallResult] && message[1].(string) == msgId {
 			return message[2], nil
 		}
-		if message[0].(float64) == msgCallError && message[1].(string) == msgId {
+		if message[0].(string) == msgIntTypes[msgCallError] && message[1].(string) == msgId {
 			return nil, errors.New(message[2].(string))
 		}
 	}
@@ -462,14 +462,14 @@ func connectAndSub(t *testing.T, path, uri string, args ...interface{}) {
 			if err != nil {
 				t.Fatal("Can't unmarshal message")
 			}
-			if message[0].(float64) == msgWelcome {
+			if message[0].(string) == msgIntTypes[msgWelcome] {
 				continue
 			}
 			if message[1].(string) == uri {
-				if message[0].(float64) == msgSubscribed {
+				if message[0].(string) == msgIntTypes[msgSubscribed] {
 					return
 				}
-				if message[0].(float64) == msgSubscribeError {
+				if message[0].(string) == msgIntTypes[msgSubscribeError] {
 					if args != nil && args[0].(bool) {
 						return
 					}
@@ -517,10 +517,10 @@ func connectAndWaitForEvent(t *testing.T, path, uri string, args ...interface{})
 				panic("Can't unmarshal message")
 			}
 			if message[1].(string) == uri {
-				if message[0].(float64) == msgEvent {
+				if message[0].(string) == msgIntTypes[msgEvent] {
 					return message[2], nil
 				}
-				if message[0].(float64) == msgSubscribeError {
+				if message[0].(string) == msgIntTypes[msgSubscribeError] {
 					t.Fatal(message[2])
 				}
 			}

@@ -43,7 +43,7 @@ func TestCreateWelcomeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := `[` + strconv.Itoa(msgWelcome) + `,"1",1,"` + identity + `"]`
+	expected := `["` + msgIntTypes[msgWelcome] + `","1",1,"` + identity + `"]`
 	if string(msg) != expected {
 		t.Fatal("Invalid createWelcomeMessage", string(msg), "!=", expected)
 	}

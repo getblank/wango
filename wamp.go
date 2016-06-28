@@ -19,12 +19,12 @@ var (
 // Wango represents a WAMP server that handles RPC and pub/sub.
 type Wango struct {
 	connections       map[string]*Conn
-	connectionsLocker sync.RWMutex
+	connectionsLocker *sync.RWMutex
 	rpcHandlers       map[string]RPCHandler
 	rpcRgxHandlers    map[*regexp.Regexp]RPCHandler
 	subHandlers       map[string]subHandler
 	subscribers       map[string]subscribersMap
-	subscribersLocker sync.RWMutex
+	subscribersLocker *sync.RWMutex
 	openCB            func(*Conn)
 	closeCB           func(*Conn)
 	aliveTimeout      time.Duration
@@ -91,10 +91,12 @@ func DebugMode() {
 func New(timeout ...time.Duration) *Wango {
 	w := new(Wango)
 	w.connections = map[string]*Conn{}
+	w.connectionsLocker = new(sync.RWMutex)
 	w.rpcHandlers = map[string]RPCHandler{}
 	w.rpcRgxHandlers = map[*regexp.Regexp]RPCHandler{}
 	w.subHandlers = map[string]subHandler{}
 	w.subscribers = map[string]subscribersMap{}
+	w.subscribersLocker = new(sync.RWMutex)
 	if timeout != nil {
 		w.aliveTimeout = timeout[0]
 	} else {
@@ -123,7 +125,7 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 	c.callResults[id] = ch
 	c.callResultsLocker.Unlock()
 	args := make([]interface{}, 3+len(data))
-	args[0] = msgCall
+	args[0] = msgIntTypes[msgCall]
 	args[1] = id
 	args[2] = uri
 	for i, arg := range data {
@@ -206,9 +208,9 @@ func (w *Wango) Publish(uri string, event interface{}) {
 				// not allowed to send
 				continue
 			}
-			response, _ = createMessage(msgEvent, uri, modifiedEvent)
+			response, _ = createMessage(msgIntTypes[msgEvent], uri, modifiedEvent)
 		} else {
-			response, _ = createMessage(msgEvent, uri, event)
+			response, _ = createMessage(msgIntTypes[msgEvent], uri, event)
 		}
 		go c.send(response)
 	}
@@ -257,7 +259,7 @@ func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, a
 
 // SendEvent sends event for provided uri directly to receivers in slice connIDs
 func (w *Wango) SendEvent(uri string, event interface{}, connIDs []string) {
-	msg, _ := createMessage(msgEvent, uri, event)
+	msg, _ := createMessage(msgIntTypes[msgEvent], uri, event)
 	for _, id := range connIDs {
 		c, err := w.getConnection(id)
 		if err != nil {
@@ -299,7 +301,7 @@ func (w *Wango) Subscribe(uri string, fn func(uri string, event interface{}), id
 	c.eventHandlers[uri] = fn
 	c.eventHandlersLocker.Unlock()
 
-	msg, _ := createMessage(msgSubscribe, uri)
+	msg, _ := createMessage(msgIntTypes[msgSubscribe], uri)
 	c.send(msg)
 
 	err := <-resChan
@@ -340,7 +342,7 @@ func (w *Wango) Unsubscribe(uri string, id ...string) error {
 	delete(c.eventHandlers, uri)
 	c.eventHandlersLocker.Unlock()
 
-	msg, _ := createMessage(msgUnsubscribe, uri)
+	msg, _ := createMessage(msgIntTypes[msgUnsubscribe], uri)
 	c.send(msg)
 
 	err := <-resChan
@@ -594,18 +596,18 @@ func (w *Wango) handleRPCCall(c *Conn, msg []interface{}) {
 		go func() {
 			res, err := handler(c, uri, rpcMessage.Args...)
 			if err != nil {
-				response, _ := createMessage(msgCallError, rpcMessage.ID, createError(err))
+				response, _ := createMessage(msgIntTypes[msgCallError], rpcMessage.ID, createError(err))
 				// TODO: error handling
 				c.send(response)
 				return
 			}
-			response, _ := createMessage(msgCallResult, rpcMessage.ID, res)
+			response, _ := createMessage(msgIntTypes[msgCallResult], rpcMessage.ID, res)
 			c.send(response)
 		}()
 		return
 	}
 
-	response, _ := createMessage(msgCallError, rpcMessage.ID, createError(errRPCNotRegistered))
+	response, _ := createMessage(msgIntTypes[msgCallError], rpcMessage.ID, createError(errRPCNotRegistered))
 	c.send(response)
 }
 
@@ -625,7 +627,7 @@ func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 			if handler.subHandler != nil {
 				data, err = handler.subHandler(c, _uri, subMessage.Args...)
 				if err != nil {
-					response, _ := createMessage(msgSubscribeError, _uri, createError(err))
+					response, _ := createMessage(msgIntTypes[msgSubscribeError], _uri, createError(err))
 					go c.send(response)
 					return
 				}
@@ -634,12 +636,12 @@ func (w *Wango) handleSubscribe(c *Conn, msg []interface{}) {
 				w.subscribers[_uri] = subscribersMap{}
 			}
 			w.subscribers[_uri][c.id] = subscriberExists
-			response, _ := createMessage(msgSubscribed, _uri, data)
+			response, _ := createMessage(msgIntTypes[msgSubscribed], _uri, data)
 			go c.send(response)
 			return
 		}
 	}
-	response, _ := createMessage(msgSubscribeError, _uri, createError(errSubURINotRegistered))
+	response, _ := createMessage(msgIntTypes[msgSubscribeError], _uri, createError(errSubURINotRegistered))
 	go c.send(response)
 }
 
@@ -657,7 +659,7 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 		if uri == _uri {
 			if _, ok := subscribers[c.id]; ok {
 				delete(subscribers, c.id)
-				response, _ := createMessage(msgUnsubscribed, _uri)
+				response, _ := createMessage(msgIntTypes[msgUnsubscribed], _uri)
 				go c.send(response)
 				for handlersURI, handler := range w.subHandlers {
 					if strings.HasPrefix(_uri, handlersURI) && handler.unsubHandler != nil {
@@ -666,12 +668,12 @@ func (w *Wango) handleUnSubscribe(c *Conn, msg []interface{}) {
 				}
 				return
 			}
-			response, _ := createMessage(msgUnsubscribeError, _uri, createError(errNotSubscribes))
+			response, _ := createMessage(msgIntTypes[msgUnsubscribeError], _uri, createError(errNotSubscribes))
 			go c.send(response)
 			return
 		}
 	}
-	response, _ := createMessage(msgUnsubscribeError, _uri, createError(errSubURINotRegistered))
+	response, _ := createMessage(msgIntTypes[msgUnsubscribeError], _uri, createError(errSubURINotRegistered))
 	go c.send(response)
 }
 
