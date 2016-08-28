@@ -379,6 +379,7 @@ func (w *Wango) receive(c *Conn) {
 		for {
 			err := websocket.Message.Receive(c.connection, &data)
 			if err != nil {
+				logger("Message receiving error: ", err)
 				if err != io.EOF {
 					// Error receiving message
 				}
@@ -392,6 +393,7 @@ MessageLoop:
 	for {
 		select {
 		case <-c.breakChan:
+			logger("breakChan signal received, will close connection.")
 			break MessageLoop
 		case data := <-dataChan:
 			msgType, msg, err := parseMessage(data)
@@ -745,7 +747,7 @@ func (w *Wango) deleteConnection(c *Conn) {
 	delete(w.connections, c.id)
 	w.connectionsLocker.Unlock()
 
-	c.subRequests.closeRequests()
+	go c.subRequests.closeRequests()
 
 	w.subscribersLocker.Lock()
 	for _, subscribers := range w.subscribers {

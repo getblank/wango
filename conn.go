@@ -90,6 +90,8 @@ func (c *Conn) heartbeating() {
 	ticker := time.NewTicker(heartBeatFrequency)
 	for c.Connected() {
 		msg, _ := createMessage(msgIntTypes[msgHeartbeat], hbSequence)
+		hbSequence++
+		logger("HB message: ", string(msg))
 		c.send(msg)
 		<-ticker.C
 	}
@@ -107,6 +109,7 @@ func (c *Conn) send(msg []byte) {
 func (c *Conn) sender() {
 	var err error
 	for msg := range c.sendChan {
+		logger("Sending message ", string(msg))
 		if c.stringMode {
 			err = websocket.Message.Send(c.connection, string(msg))
 		} else {
@@ -114,6 +117,7 @@ func (c *Conn) sender() {
 		}
 		if err != nil {
 			logger("Error when send message", err.Error())
+			c.breakChan <- struct{}{}
 		}
 	}
 }
