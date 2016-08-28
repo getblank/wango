@@ -142,7 +142,9 @@ func (w *Wango) Call(uri string, data ...interface{}) (interface{}, error) {
 func (w *Wango) Disconnect() {
 	w.connectionsLocker.RLock()
 	for _, c := range w.connections {
-		c.breakChan <- struct{}{}
+		go func(ch chan struct{}) {
+			ch <- struct{}{}
+		}(c.breakChan)
 	}
 	w.connectionsLocker.RUnlock()
 }
@@ -716,16 +718,16 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.callResultsLocker = new(sync.Mutex)
 	cn.eventHandlersLocker = new(sync.RWMutex)
 	w.connectionsLocker.Lock()
-	defer w.connectionsLocker.Unlock()
 	w.connections[cn.id] = cn
+	w.connectionsLocker.Unlock()
 
 	return cn
 }
 
 func (w *Wango) getConnection(id string) (*Conn, error) {
 	w.connectionsLocker.RLock()
-	defer w.connectionsLocker.RUnlock()
 	cn, ok := w.connections[id]
+	w.connectionsLocker.RUnlock()
 	if !ok {
 		return nil, errors.New("NOT FOUND")
 	}
