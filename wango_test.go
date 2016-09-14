@@ -15,7 +15,7 @@ import (
 )
 
 var origin = "http://localhost/"
-var url = "ws://localhost:1234"
+var url = "ws://localhost:1243"
 
 func TestAcceptingConcurrentConnections(t *testing.T) {
 	path := "/wamp-opening"
@@ -205,7 +205,7 @@ func TestClientConnectingAndPubSub(t *testing.T) {
 		return nil, nil
 	}, nil, nil)
 
-	url := "localhost:1234"
+	url := "localhost:1243"
 	client, err := Connect(url+path, origin)
 	if err != nil {
 		t.Fatal("Can't connect to server", err.Error())
@@ -301,7 +301,7 @@ func TestSessionOpenSessionCloseHandlers(t *testing.T) {
 	server.SetSessionOpenCallback(sessionOpenCallback)
 	server.SetSessionCloseCallback(sessionCloseCallback)
 
-	url := "localhost:1234"
+	url := "localhost:1243"
 	maxConnects := 20
 	clients := make([]*Wango, maxConnects)
 	for i := 0; i < maxConnects; i++ {
@@ -590,7 +590,7 @@ func createWampServer(path string) *Wango {
 
 func init() {
 	go func() {
-		err := http.ListenAndServe(":1234", nil)
+		err := http.ListenAndServe(":1243", nil)
 		if err != nil {
 			panic("ListenAndServe: " + err.Error())
 		}

@@ -1,6 +1,7 @@
 package wango
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
@@ -61,6 +62,11 @@ func (c *Conn) ID() string {
 // RemoteAddr returns remote address
 func (c *Conn) RemoteAddr() string {
 	return c.connection.Request().RemoteAddr
+}
+
+// Request returns related *http.Request
+func (c *Conn) Request() *http.Request {
+	return c.connection.Request()
 }
 
 // SendEvent sends event for provided uri directly to connection
