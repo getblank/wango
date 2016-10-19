@@ -26,6 +26,7 @@ type Conn struct {
 	clientConnection    bool
 	aliveTimer          *time.Timer
 	aliveTimeout        time.Duration
+	aliveMutex          *sync.Mutex
 	stringMode          bool
 }
 
@@ -105,7 +106,11 @@ func (c *Conn) heartbeating() {
 }
 
 func (c *Conn) resetTimeoutTimer() {
-	c.aliveTimer.Reset(c.aliveTimeout)
+	c.aliveMutex.Lock()
+	if c.aliveTimer.Stop() {
+		c.aliveTimer.Reset(c.aliveTimeout)
+	}
+	c.aliveMutex.Lock()
 }
 
 func (c *Conn) send(msg []byte) {

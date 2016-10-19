@@ -712,8 +712,10 @@ func (w *Wango) addConnection(ws *websocket.Conn, extra interface{}) *Conn {
 	cn.unsubRequests = subRequestsListeners{listeners: map[string][]subRequestsListener{}, locker: new(sync.Mutex)}
 	cn.breakChan = make(chan struct{})
 	cn.connected = true
+	cn.aliveMutex = new(sync.Mutex)
 	cn.aliveTimeout = w.aliveTimeout
 	cn.aliveTimer = time.AfterFunc(cn.aliveTimeout, func() {
+		logger("Connection timeout", cn.ID())
 		cn.Close()
 	})
 	cn.extraLocker = new(sync.RWMutex)
