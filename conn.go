@@ -110,7 +110,7 @@ func (c *Conn) resetTimeoutTimer() {
 	if c.aliveTimer.Stop() {
 		c.aliveTimer.Reset(c.aliveTimeout)
 	}
-	c.aliveMutex.Lock()
+	c.aliveMutex.Unlock()
 }
 
 func (c *Conn) send(msg []byte) {
