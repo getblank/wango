@@ -1,9 +1,9 @@
 package wango
 
 import (
+	"errors"
 	"strconv"
 
-	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
 
@@ -11,11 +11,11 @@ func (c *Conn) receiveWelcome() error {
 	var data []byte
 	err := websocket.Message.Receive(c.connection, &data)
 	if err != nil {
-		return errors.Wrap(err, "Can't receive welcome message")
+		return err
 	}
 	msgType, msg, err := parseMessage(data)
 	if err != nil {
-		return errors.Wrap(err, "Parsing welcome message")
+		return err
 	}
 	if msgType != msgWelcome {
 		if typeString, ok := msgIntTypes[msgType]; ok {

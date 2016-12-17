@@ -1,13 +1,13 @@
 package wango
 
 import (
+	"errors"
 	"io"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
 	"golang.org/x/net/websocket"
 )
 
@@ -60,7 +60,7 @@ func Connect(url, origin string, timeout ...time.Duration) (*Wango, error) {
 	}
 	ws, err := websocket.Dial(url, "wamp", origin)
 	if err != nil {
-		return nil, errors.Wrap(err, "Can't connect to "+url)
+		return nil, err
 	}
 	w := New()
 	c := w.addConnection(ws, nil)
@@ -224,14 +224,14 @@ func (w *Wango) RegisterRPCHandler(_uri interface{}, fn func(c *Conn, uri string
 	case string:
 		uri := _uri.(string)
 		if _, ok := w.rpcHandlers[uri]; ok {
-			return errors.Wrap(errHandlerAlreadyRegistered, "when registering string rpcHandler")
+			return errHandlerAlreadyRegistered
 		}
 		w.rpcHandlers[uri] = fn
 	case *regexp.Regexp:
 		rgx := _uri.(*regexp.Regexp)
 		for k := range w.rpcRgxHandlers {
 			if k.String() == rgx.String() {
-				return errors.Wrap(errHandlerAlreadyRegistered, "when registering rgx rpcHandler")
+				return errHandlerAlreadyRegistered
 			}
 		}
 		w.rpcRgxHandlers[rgx] = fn
@@ -248,7 +248,7 @@ func (w *Wango) RegisterRPCHandler(_uri interface{}, fn func(c *Conn, uri string
 // then to connection will send data from second argument.
 func (w *Wango) RegisterSubHandler(uri string, fnSub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnUnsub func(c *Conn, uri string, args ...interface{}) (interface{}, error), fnPub func(uri string, event interface{}, extra interface{}) (bool, interface{})) error {
 	if _, ok := w.subHandlers[uri]; ok {
-		return errors.Wrap(errHandlerAlreadyRegistered, "when registering subHandler")
+		return errHandlerAlreadyRegistered
 	}
 
 	w.subHandlers[uri] = subHandler{
