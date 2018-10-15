@@ -276,10 +276,13 @@ func (w *Wango) Subscribe(uri string, fn func(uri string, event interface{}), id
 	if uri == "" {
 		return errors.New("Empty uri")
 	}
+
+	w.connectionsLocker.RLock()
 	if len(w.connections) == 0 {
+		w.connectionsLocker.RUnlock()
 		return errors.New("No active connections")
 	}
-	w.connectionsLocker.RLock()
+
 	var c *Conn
 	if id != nil {
 		_c, ok := w.connections[id[0]]
