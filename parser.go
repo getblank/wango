@@ -28,13 +28,16 @@ func parseMessage(_msg []byte) (int, []interface{}, error) {
 	return 0, nil, errors.New("unknown call type")
 }
 
-func parseWampMessage(typ int, msg []interface{}) (*wampUnmarshaledMsg, error) {
+func parseWampMessage(typ int, msg []interface{}) (*wampMsg, error) {
 	if typ == msgCall && len(msg) < 3 {
 		return nil, errors.New("invalid wamp message")
-	} else if len(msg) < 2 {
+	}
+
+	if len(msg) < 2 {
 		return nil, errors.New("invalid wamp message")
 	}
-	message := new(wampUnmarshaledMsg)
+
+	message := new(wampMsg)
 	switch typ {
 	case msgCall:
 		if msg[1] == nil {

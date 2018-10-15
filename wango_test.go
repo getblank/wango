@@ -28,7 +28,7 @@ func TestAcceptingConcurrentConnections(t *testing.T) {
 
 	totalConnections := len(server.connections)
 	if totalConnections != numberConnections {
-		t.Fatal("Invalid connections number when connecting", totalConnections)
+		t.Fatalf("Invalid connections number %d when connecting, expected: %d", totalConnections, numberConnections)
 	}
 }
 
